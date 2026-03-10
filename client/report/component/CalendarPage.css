@@ -1,0 +1,404 @@
+/* =======================
+   MONTH TOTAL – CENTERED
+======================= */
+.month-total-card {
+  background: linear-gradient(135deg, #1f1c2c, #928dab);
+  color: #fff;
+  border-radius: 22px;
+  height: 100%;
+  min-height: 330px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.month-total-inner {
+  text-align: center;
+}
+
+/* Container for the stats bar */
+.monthly-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  padding: 1rem 1.5rem;
+
+  /* Modern Glassmorphism Look */
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  border: 1px solid #e2e8f0;
+  border-left: 5px solid #2563eb; /* Royal Blue Accent */
+  border-radius: 12px;
+  box-shadow:
+    0 4px 15px -3px rgba(0, 0, 0, 0.05),
+    0 2px 6px -2px rgba(0, 0, 0, 0.05);
+
+  font-family: "Inter", system-ui, sans-serif;
+  color: #475569; /* Slate grey for readability */
+  margin: 1.5rem 0;
+}
+
+/* The Main Title Text */
+.monthly-stats {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* The Highlighted Numbers */
+.monthly-stats strong {
+  color: #1e293b;
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 4px;
+  font-variant-numeric: tabular-nums; /* Keeps numbers aligned */
+}
+
+/* Label Badges (Expected Production / Monthly Demand) */
+.badge-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+  background: #334155; /* Slate 700 */
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+/* Value Badges (The Numbers next to labels) */
+.badge-value {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  margin-left: -8px; /* Snaps to the label */
+  background: #ffffff;
+  color: #2563eb;
+  border: 1px solid #e2e8f0;
+  border-radius: 0 6px 6px 0;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.02);
+}
+
+/* Special color for Expected Production Badge (using your Green) */
+/* This targets the span where you have the inline style */
+.monthly-stats span[style*="background-color: #059669"],
+.monthly-stats span[style*="background-color: rgb(5, 150, 105)"] {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border: none;
+}
+
+/* Special color for Expected Production Number */
+.monthly-stats strong[style*="color: #059669"],
+.monthly-stats strong[style*="color: rgb(5, 150, 105)"] {
+  color: #059669 !important;
+  background: #ecfdf5; /* Soft green background glow */
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .monthly-stats {
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .badge-label {
+    margin-left: 0 !important;
+  }
+}
+
+.month-label {
+  font-size: 18px;
+  letter-spacing: 1px;
+  opacity: 0.85;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.month-total-value {
+  font-size: 64px;
+  font-weight: 800;
+  margin: 10px 0;
+}
+
+.month-subtext {
+  font-size: 13px;
+  letter-spacing: 2px;
+  opacity: 0.7;
+}
+
+/* =======================
+     CALENDAR CONTAINER
+  ======================= */
+.calendar-wrapper {
+  background: #ffffff;
+  padding: 28px;
+  border-radius: 22px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* =======================
+     REACT CALENDAR – BOLD
+  ======================= */
+.react-calendar {
+  border: none;
+  width: 100%;
+  font-family: "Poppins", "Segoe UI", system-ui, sans-serif;
+}
+
+/* HEADER */
+.react-calendar__navigation button {
+  font-weight: 700;
+  font-size: 16px;
+  border-radius: 10px;
+}
+
+.react-calendar__navigation button:hover {
+  background: #f1f3ff;
+}
+
+/* WEEKDAYS */
+.react-calendar__month-view__weekdays {
+  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 700;
+  color: #777;
+}
+
+/* DATE TILE */
+.react-calendar__tile {
+  height: 85px;
+  border-radius: 18px;
+  font-weight: 700;
+  font-size: 20px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+}
+
+/* HOVER */
+.react-calendar__tile:hover {
+  background: #eef1ff;
+  transform: scale(1.05);
+}
+
+/* TODAY */
+.react-calendar__tile--now {
+  background: #fff1e6;
+  border: 2px solid #ff9800;
+}
+
+/* SELECTED */
+.react-calendar__tile--active {
+  background: linear-gradient(135deg, #1f1c2c, #928dab) !important;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* DISABLE DOUBLE ACTIVE */
+.react-calendar__tile--active:enabled:hover {
+  background: linear-gradient(135deg, #1f1c2c, #928dab);
+}
+
+/* =======================
+     MODAL (UNCHANGED LOOK)
+  ======================= */
+.modal-content {
+  border-radius: 20px;
+}
+
+.modal-header {
+  background: linear-gradient(135deg, #1f1c2c, #928dab);
+  color: #fff;
+}
+
+.modal-footer button {
+  background: linear-gradient(135deg, #1f1c2c, #928dab);
+  border-radius: 14px;
+}
+
+/* Container and Card */
+.calendar-wrapper {
+  background-color: #f0f2f5;
+  min-height: 100vh;
+  font-family: "Arial", sans-serif;
+}
+
+.calendar-card {
+  border-radius: 0; /* Professional planners usually have sharp or slightly rounded edges */
+  border: 10px solid white !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Header Styling */
+.react-calendar__navigation {
+  background: white;
+  border-bottom: 2px solid #eee;
+  margin-bottom: 0;
+}
+
+.react-calendar__navigation button {
+  color: #0066cc !important;
+  font-weight: 900 !important;
+  font-size: 1.5rem !important;
+  text-transform: uppercase;
+}
+
+/* The Grid Layout */
+.react-calendar__viewContainer {
+  padding: 10px;
+  background: white;
+}
+
+/* Day of week labels (Sun, Mon, etc.) */
+.react-calendar__month-view__weekdays {
+  text-transform: uppercase;
+  font-weight: bold;
+  background-color: #e9ecef; /* Light grey header like the image */
+  padding: 10px 0;
+  border: 1px solid #dee2e6;
+}
+
+.react-calendar__month-view__weekdays__weekday {
+  color: #333;
+}
+
+/* Calendar Tiles (The Cells) */
+.react-calendar__tile {
+  height: 80px; /* Taller cells like a wall calendar */
+  border: 1px solid #f0f0f0 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 10px !important;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+/* Highlighting the "Holidays/Weekend" column style */
+/* If Sunday is the first column (index 0) */
+.react-calendar__month-view__days__day--weekend {
+  background-color: #e3f2fd !important; /* Soft blue tint from your image */
+  color: #0066cc !important;
+}
+
+/* Active/Selected Day */
+.react-calendar__tile--active {
+  background: #0066cc !important;
+  color: white !important;
+}
+
+/* Custom "Note" area look for the list */
+.schedule-list {
+  border-left: 4px solid #0066cc;
+  padding-left: 15px;
+}
+
+.has-data {
+  background: #0d6efd !important;
+  color: #fff !important;
+  border-radius: 50%;
+  font-weight: bold;
+}
+/* Header Container */
+.header-container {
+  background: linear-gradient(
+    135deg,
+    #1e3c72 0%,
+    #2a5298 100%
+  ); /* Blue Gradient */
+  padding: 30px 40px;
+  color: white;
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Left side: Title and Icon */
+.title-area {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.icon-circle {
+  background: rgba(255, 255, 255, 0.2);
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 30px;
+  backdrop-filter: blur(5px);
+}
+
+.header-content h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.subtitle {
+  margin: 5px 0 0 0;
+  font-size: 14px;
+  opacity: 0.8;
+  font-weight: 300;
+}
+
+/* Right side: Stats Badge */
+.stats-badge {
+  background: white;
+  padding: 12px 25px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  min-width: 180px;
+}
+
+.badge-label {
+  display: block;
+  color: red;
+  font-size: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.badge-value {
+  color: #1e3c72;
+  font-size: 24px;
+  font-weight: 800;
+  display: block;
+}
+
+/* Responsive adjustment */
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+  .title-area {
+    flex-direction: column;
+  }
+}

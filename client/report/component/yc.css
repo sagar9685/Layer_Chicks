@@ -1,0 +1,62 @@
+.due-graph-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  max-width: 1000px;
+  margin: auto;
+}
+
+.due-graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.due-graph-header h4 {
+  margin: 0;
+  font-weight: 700;
+  color: #111827;
+}
+
+.due-graph-header select {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chart-container {
+  height: 420px;
+}
+
+.loading-text {
+  text-align: center;
+  color: #6b7280;
+  font-weight: 500;
+}
+/* Container for the text */
+.header-container {
+  padding: 24px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Main Title */
+h1 {
+  color: #111827;
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+/* Subtitle */
+.subtitle {
+  color: #6b7280;
+  font-size: 1rem;
+  margin-top: 4px;
+  font-weight: 400;
+}

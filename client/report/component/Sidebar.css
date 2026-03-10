@@ -1,0 +1,40 @@
+.sidebar {
+  width: 220px;
+  height: 100vh;
+  background: #0f172a;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.sidebar-logo {
+  font-size: 1.4rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.sidebar button {
+  background: transparent;
+  border: none;
+  color: #e5e7eb;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+}
+
+.sidebar button:hover {
+  background: #1e293b;
+  color: #38bdf8;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}

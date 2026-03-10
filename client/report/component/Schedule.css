@@ -1,0 +1,30 @@
+/* Container to hold Sidebar + Content */
+.app-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* The area to the right of the sidebar */
+.main-content {
+  flex-grow: 1;
+  overflow-x: hidden;
+  background-color: #f8f9fa;
+  padding: 20px;
+  /* If your sidebar is fixed width, this will automatically fill the rest */
+}
+
+/* Ensure the calendar grid stays responsive */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* Optional: styling for the month switcher in the header */
+.month-switcher {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
