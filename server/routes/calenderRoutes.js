@@ -9,9 +9,18 @@ const {
   dueGraph,
   dueGraphwithDate,
   postScheduleTransfer,
+  getScheduleCustomer,
+  addProduction,
+  getHatcheries,
+  addLayerSchedule,
+  getLayerCustomers,
+  deleteLayerSchedule,
+  updateLayerSchedule
 } = require("../controller/reportController");
 
 router.get("/schedule/:date", getSchedule);
+
+router.get("/sch/:date", getScheduleCustomer);
 
 router.post("/schedule", postSchedule);
 
@@ -24,5 +33,12 @@ router.get("/due-graph/:year", dueGraph);
 router.get("/due-graph-datewise", dueGraphwithDate);
 
 router.post("/transfer", postScheduleTransfer);
+
+router.post('/production',addProduction)
+router.get("/hatcheries", getHatcheries );
+router.post("/layer-schedule", addLayerSchedule);
+router.get("/layer-customers", getLayerCustomers);
+router.delete('/layer-schedule/:id',deleteLayerSchedule)
+router.put('/layer-schedule/:id',updateLayerSchedule)
 
 module.exports = router;

@@ -11,6 +11,7 @@ import {
   Legend,
 } from "chart.js";
 
+import api from "./api";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 export default function DueGraphDateWise() {
@@ -24,13 +25,15 @@ export default function DueGraphDateWise() {
       return;
     }
 
-    const res = await axios.get(
-      "http://137.97.174.50:5007/api/due-graph-datewise",
-      {
-        params: { fromDate, toDate },
-      }
-    );
-
+    // const res = await axios.get(
+    //   "http://137.97.174.50:5007/api/due-graph-datewise",
+    //   {
+    //     params: { fromDate, toDate },
+    //   },
+    // );
+    const res = await api.get("/api/due-graph-datewise", {
+      params: { fromDate, toDate },
+    });
     setRows(res.data);
   };
 

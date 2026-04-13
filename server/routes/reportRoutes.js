@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { getDueReport,getExpectedLayerChicks,getSchedule,postSchedule,getMonth,getDates, getActualReport } = require("../controller/reportController");
+const { getDueReport,getExpectedLayerChicks,getSchedule,postSchedule,getMonth,getDates,getActualReport } = require("../controller/reportController");
 
 router.get("/due", getDueReport);
 

@@ -4,6 +4,7 @@ const dbConfig = {
   user: "sa",
   password: "Ph@hoenix#g",
   server: "192.168.0.130",
+  port: 3759,
   database: "PhxGroupERP",
   options: {
     trustServerCertificate: true,
@@ -11,11 +12,6 @@ const dbConfig = {
   },
   connectionTimeout: 30000,
   requestTimeout: 60000,
-  pool: {
-    max: 10,
-    min: 0,
-    idleTimeoutMillis: 30000,
-  },
 };
 
 // ✅ poolPromise (USED BY schedule & month APIs)

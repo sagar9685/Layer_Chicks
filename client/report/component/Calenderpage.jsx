@@ -18,6 +18,7 @@ export default function CalendarPage() {
   const [markedDates, setMarkedDates] = useState([]);
   const [productionData, setProductionData] = useState([]); // State for the table
   const [loading, setLoading] = useState(false);
+  const [scheduleList, setScheduleList] = useState([]);
 
   // Helper to format dates for display (e.g., 2024-05-20)
   const formatDateDisplay = (dateString) => {
@@ -70,6 +71,12 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchScheduleCustomer = async (dt) => {
+    const res = await axios.get(`http://137.97.174.50:5007/api/sch/${dt}`);
+    setScheduleList(res.data);
+    console.log(res.data, "setScheduleList");
   };
 
   useEffect(() => {
@@ -163,7 +170,10 @@ export default function CalendarPage() {
               onClickDay={(d) => {
                 setDate(d);
                 setShow(true);
-                fetchList(formatDate(d));
+                const formatted = formatDate(d);
+
+                fetchList(formatted); // Demand data
+                fetchScheduleCustomer(formatted); // Scheduled Qty data ✅
               }}
               onActiveStartDateChange={({ activeStartDate }) =>
                 setActiveMonth(activeStartDate)
@@ -363,12 +373,12 @@ export default function CalendarPage() {
                       </tr>
                     </thead>
                     <tbody style={{ fontSize: "0.9rem" }}>
-                      {list.map((x, i) => (
+                      {scheduleList.map((x, i) => (
                         <tr key={i}>
                           <td>{i + 1}</td>
-                          <td className="text-start">{x.CustomerName}</td>
+                          <td className="text-start">{x.Cust_Name}</td>
                           <td className="text-end fw-bold text-primary">
-                            {Number(x.Qty || 0).toLocaleString()} pcs
+                            {Number(x.QtyNet || 0).toLocaleString()} pcs
                           </td>
                         </tr>
                       ))}
@@ -403,10 +413,9 @@ export default function CalendarPage() {
                               .toLocaleString()}
                           </td>
                           <td className="text-success">
-                            {list
+                            {scheduleList
                               .reduce(
-                                (acc, curr) =>
-                                  acc + (Number(curr.DemandQty) || 0),
+                                (acc, curr) => acc + (Number(curr.Qty) || 0),
                                 0,
                               )
                               .toLocaleString()}
