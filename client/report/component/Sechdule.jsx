@@ -134,10 +134,15 @@ const saveScheduleCustomer = async () => {
 
   const available = (hatchRow.ExpectedChicks || 0) - usedQty;
 
-  if (Number(scheduleQty) > available) {
-    alert(`Only ${available} chicks available for this hatchery`);
-    return;
-  }
+  if (Number(scheduleQty) <= 0) {
+  alert("Qty must be greater than 0");
+  return;
+}
+
+if (Number(scheduleQty) > available) {
+  alert(`Only ${available} chicks available for this hatchery`);
+  return;
+}
 
   try {
     // ✅ EDIT CASE
@@ -388,6 +393,16 @@ const handleEdit = (item) => {
       alert("Error during split transfer");
     }
   };
+
+       let grandTotal = 0; // 👈 overall total
+
+  const groupedData = scheduleList.reduce((acc, item) => {
+  if (!acc[item.Hatchery]) {
+    acc[item.Hatchery] = [];
+  }
+  acc[item.Hatchery].push(item);
+  return acc;
+}, {});
 
   const handleBook = async (item, selectedDate) => {
     if (!item.newQty) {
@@ -886,47 +901,94 @@ const handleEdit = (item) => {
                   <table className="data-table">
                     <thead className="table-dark small text-center">
                       <tr>
-                        <th>#</th>
-                        <th>Customer Name</th>
-                        <th>Scheduled Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody style={{ fontSize: "0.9rem" }}>
-  {scheduleList.length > 0 ? (
-    scheduleList.map((x, i) => (
-     <tr key={i}>
-  <td>{i + 1}</td>
-
-  <td className="text-start">
-    {x.Cust_Name}
-  </td>
-
-  <td className="text-end fw-bold text-primary">
-    {Number(x.QtyNet).toLocaleString()} pcs
-  </td>
-
-  <td className="text-center">
-    <button
-      className="btn btn-sm btn-warning me-1"
-      onClick={() => handleEdit(x)}
-    >
-      Edit
-    </button>
-
-    <button
-      className="btn btn-sm btn-danger"
-      onClick={() => handleDelete(x)}
-    >
-      Delete
-    </button>
-  </td>
+  <th>#</th>
+  <th>Customer Name</th>
+  <th>Hatchery</th>   {/* 👈 NEW */}
+  <th>Scheduled Qty</th>
+  <th>Action</th>     {/* 👈 already use ho raha hai */}
 </tr>
-    ))
+                    </thead>
+              
+
+<tbody style={{ fontSize: "0.9rem" }}>
+  {scheduleList.length > 0 ? (
+    Object.keys(groupedData).map((hatch, index) => {
+
+      // ✅ Hatch wise total
+      const hatchTotal = groupedData[hatch].reduce(
+        (sum, item) => sum + Number(item.QtyNet || 0),
+        0
+      );
+
+      // ✅ add to grand total
+      grandTotal += hatchTotal;
+
+      return (
+        <React.Fragment key={hatch}>
+
+          {/* 🔹 Hatchery Heading */}
+          <tr style={{ background: "#e2e8f0", fontWeight: "bold" }}>
+            <td colSpan="5">🏭 {hatch}</td>
+          </tr>
+
+          {/* 🔹 Rows */}
+          {groupedData[hatch].map((x, i) => (
+            <tr key={x.Id}>
+              <td>{i + 1}</td>
+              <td className="text-start">{x.Cust_Name}</td>
+              <td className="text-center">{x.Hatchery}</td>
+              <td className="text-end fw-bold text-primary">
+                {Number(x.QtyNet).toLocaleString()} pcs
+              </td>
+              <td className="text-center">
+                <button
+                  className="btn btn-sm btn-warning me-1"
+                  onClick={() => handleEdit(x)}
+                >
+                  Edit
+                </button>
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => handleDelete(x)}
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+
+          {/* 🔹 Hatchery Total Row */}
+          <tr style={{ background: "#f1f5f9", fontWeight: "bold" }}>
+            <td colSpan="3" className="text-end">
+              Total ({hatch})
+            </td>
+            <td className="text-end text-success">
+              {hatchTotal.toLocaleString()} pcs
+            </td>
+            <td></td>
+          </tr>
+
+        </React.Fragment>
+      );
+    })
   ) : (
     <tr>
-      <td colSpan="3" className="text-center text-muted">
+      <td colSpan="5" className="text-center text-muted">
         No scheduled data for this date
       </td>
+    </tr>
+  )}
+
+  {/* 🔥 GRAND TOTAL */}
+  {scheduleList.length > 0 && (
+    <tr style={{ background: "#cbd5f5", fontWeight: "bold" }}>
+      <td colSpan="3" className="text-end">
+        🔥 Grand Total (All Hatcheries)
+      </td>
+      <td className="text-end text-primary">
+        {grandTotal.toLocaleString()} pcs
+      </td>
+      <td></td>
     </tr>
   )}
 </tbody>

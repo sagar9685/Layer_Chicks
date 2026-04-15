@@ -56,9 +56,11 @@ exports.addLayerSchedule = async (req, res) => {
       Qty
     } = req.body;
 
+    const qtyNum = Number(Qty); // ✅ important
+
     const pool = await poolPromise;
 
-    // 1️⃣ Get total production for that hatchery + date
+    // 1️⃣ total production
     const prodResult = await pool.request()
       .input("date", sql.Date, Schedule_Date)
       .input("hatchery", sql.VarChar, Hatchery)
@@ -71,7 +73,7 @@ exports.addLayerSchedule = async (req, res) => {
 
     const totalProduction = prodResult.recordset[0].total || 0;
 
-    // 2️⃣ Get already used qty
+    // 2️⃣ used qty
     const usedResult = await pool.request()
       .input("date", sql.Date, Schedule_Date)
       .input("hatchery", sql.VarChar, Hatchery)
@@ -82,23 +84,30 @@ exports.addLayerSchedule = async (req, res) => {
         AND Hatchery = @hatchery
       `);
 
-    const usedQty = usedResult.recordset[0].used || 0;
+    const usedQty = usedResult.recordset[0].used || 0; // ✅ MISSING LINE FIX
 
-    // 3️⃣ Check limit
-    if ((usedQty + Qty) > totalProduction) {
+    // ✅ debug
+    console.log({
+      totalProduction,
+      usedQty,
+      incoming: qtyNum
+    });
+
+    // 3️⃣ validation
+    if ((usedQty + qtyNum) > totalProduction) {
       return res.status(400).json({
         message: `Only ${totalProduction - usedQty} chicks available in ${Hatchery}`
       });
     }
 
-    // 4️⃣ Insert (safe)
+    // 4️⃣ insert
     await pool.request()
       .input("Schedule_Date", sql.Date, Schedule_Date)
       .input("Cust_Code", sql.VarChar, Cust_Code)
       .input("Cust_Name", sql.VarChar, Cust_Name)
       .input("Hatchery", sql.VarChar, Hatchery)
       .input("ProductName", sql.VarChar, ProductName)
-      .input("Qty", sql.Int, Qty)
+      .input("Qty", sql.Int, qtyNum) // ✅ use qtyNum
       .query(`
         INSERT INTO LayerChickSchedule
         (Schedule_Date, Cust_Code, Cust_Name, Hatchery, ProductName, Qty, CreatedDate)
@@ -109,8 +118,11 @@ exports.addLayerSchedule = async (req, res) => {
     res.json({ message: "Saved successfully" });
 
   } catch (err) {
-    console.log(err);
-    res.status(500).send("Error");
+    console.error(err);
+
+    res.status(500).json({
+      message: err.message || "Error saving schedule"
+    });
   }
 };
 
