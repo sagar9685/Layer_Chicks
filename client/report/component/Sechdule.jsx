@@ -1246,7 +1246,17 @@ const Sechdule = () => {
                   type="date"
                   className="form-control"
                   value={hatchDate}
-                  onChange={(e) => setHatchDate(e.target.value)}
+                  onChange={(e) => {
+                    const selectedDate = e.target.value;
+                    setHatchDate(selectedDate);
+
+                    // 👇 Calculate loading date (hatchDate - 21 days)
+                    const d = new Date(selectedDate);
+                    d.setDate(d.getDate() - 21);
+
+                    const formatted = d.toISOString().split("T")[0];
+                    setLoadingDate(formatted);
+                  }}
                 />
               </div>
 

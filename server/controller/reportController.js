@@ -9,12 +9,12 @@ exports.addProduction = async (req, res) => {
 
     const pool = await poolPromise;
 
-    await pool.request()
+    await pool
+      .request()
       .input("HatchDate", sql.Date, HatchDate)
       .input("LoadingDate", sql.Date, LoadingDate)
       .input("Hatchries", sql.VarChar, Hatchries)
-      .input("ExpectedChicks", sql.Int, ExpectedChicks)
-      .query(`
+      .input("ExpectedChicks", sql.Int, ExpectedChicks).query(`
         INSERT INTO ExpectedLayerChicks
         (HatchDate, LoadingDate, Hatchries, ExpectedChicks)
         VALUES
@@ -22,7 +22,6 @@ exports.addProduction = async (req, res) => {
       `);
 
     res.json({ message: "Production added successfully" });
-
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Error adding production" });
@@ -34,11 +33,10 @@ exports.getHatcheries = async (req, res) => {
     const pool = await poolPromise;
 
     const result = await pool.request().query(`
-       select Hatcheryies,id from Hatcheries where Active = 1
+       select Hatcheryies,id from Hatcheries where Active = 1 and Hatcheryies in('Raipur Unit','Pariyat Unit')
     `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Error fetching hatcheries" });
@@ -47,24 +45,18 @@ exports.getHatcheries = async (req, res) => {
 
 exports.addLayerSchedule = async (req, res) => {
   try {
-    const {
-      Schedule_Date,
-      Cust_Code,
-      Cust_Name,
-      Hatchery,
-      ProductName,
-      Qty
-    } = req.body;
+    const { Schedule_Date, Cust_Code, Cust_Name, Hatchery, ProductName, Qty } =
+      req.body;
 
     const qtyNum = Number(Qty); // ✅ important
 
     const pool = await poolPromise;
 
     // 1️⃣ total production
-    const prodResult = await pool.request()
+    const prodResult = await pool
+      .request()
       .input("date", sql.Date, Schedule_Date)
-      .input("hatchery", sql.VarChar, Hatchery)
-      .query(`
+      .input("hatchery", sql.VarChar, Hatchery).query(`
         SELECT ISNULL(SUM(ExpectedChicks),0) as total
         FROM ExpectedLayerChicks
         WHERE CAST(HatchDate AS DATE) = @date
@@ -74,10 +66,10 @@ exports.addLayerSchedule = async (req, res) => {
     const totalProduction = prodResult.recordset[0].total || 0;
 
     // 2️⃣ used qty
-    const usedResult = await pool.request()
+    const usedResult = await pool
+      .request()
       .input("date", sql.Date, Schedule_Date)
-      .input("hatchery", sql.VarChar, Hatchery)
-      .query(`
+      .input("hatchery", sql.VarChar, Hatchery).query(`
         SELECT ISNULL(SUM(Qty),0) as used
         FROM LayerChickSchedule
         WHERE CAST(Schedule_Date AS DATE) = @date
@@ -90,18 +82,19 @@ exports.addLayerSchedule = async (req, res) => {
     console.log({
       totalProduction,
       usedQty,
-      incoming: qtyNum
+      incoming: qtyNum,
     });
 
     // 3️⃣ validation
-    if ((usedQty + qtyNum) > totalProduction) {
+    if (usedQty + qtyNum > totalProduction) {
       return res.status(400).json({
-        message: `Only ${totalProduction - usedQty} chicks available in ${Hatchery}`
+        message: `Only ${totalProduction - usedQty} chicks available in ${Hatchery}`,
       });
     }
 
     // 4️⃣ insert
-    await pool.request()
+    await pool
+      .request()
       .input("Schedule_Date", sql.Date, Schedule_Date)
       .input("Cust_Code", sql.VarChar, Cust_Code)
       .input("Cust_Name", sql.VarChar, Cust_Name)
@@ -116,16 +109,14 @@ exports.addLayerSchedule = async (req, res) => {
       `);
 
     res.json({ message: "Saved successfully" });
-
   } catch (err) {
     console.error(err);
 
     res.status(500).json({
-      message: err.message || "Error saving schedule"
+      message: err.message || "Error saving schedule",
     });
   }
 };
-
 
 exports.getLayerCustomers = async (req, res) => {
   try {
@@ -146,7 +137,6 @@ exports.getLayerCustomers = async (req, res) => {
     `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.log(err);
     res.status(500).send("Error fetching customers");
@@ -259,14 +249,12 @@ exports.getSchedule = async (req, res) => {
   }
 };
 
- exports.getScheduleCustomer = async (req, res) => {
+exports.getScheduleCustomer = async (req, res) => {
   try {
     const { date } = req.params;
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .input("date", sql.Date, date)
-      .query(`
+    const result = await pool.request().input("date", sql.Date, date).query(`
        SELECT 
   Id,
   Cust_Code,
@@ -279,7 +267,6 @@ ORDER BY Cust_Name
       `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.log(err);
     res.status(500).send("error");
@@ -462,8 +449,7 @@ exports.postScheduleTransfer = async (req, res) => {
   }
 };
 
-
-  exports.updateLayerSchedule = async (req, res) => {
+exports.updateLayerSchedule = async (req, res) => {
   try {
     const { id } = req.params;
     const { Qty, Hatchery, Schedule_Date } = req.body;
@@ -471,9 +457,7 @@ exports.postScheduleTransfer = async (req, res) => {
     const pool = await poolPromise;
 
     // 1️⃣ current record ka old qty lo
-    const current = await pool.request()
-      .input("id", sql.Int, id)
-      .query(`
+    const current = await pool.request().input("id", sql.Int, id).query(`
         SELECT Qty, Hatchery, Schedule_Date 
         FROM LayerChickSchedule 
         WHERE Id=@id
@@ -486,10 +470,10 @@ exports.postScheduleTransfer = async (req, res) => {
     const oldQty = current.recordset[0].Qty;
 
     // 2️⃣ total production
-    const prod = await pool.request()
+    const prod = await pool
+      .request()
       .input("date", sql.Date, Schedule_Date)
-      .input("hatchery", sql.VarChar, Hatchery)
-      .query(`
+      .input("hatchery", sql.VarChar, Hatchery).query(`
         SELECT ISNULL(SUM(ExpectedChicks),0) as total
         FROM ExpectedLayerChicks
         WHERE CAST(HatchDate AS DATE) = @date
@@ -499,11 +483,11 @@ exports.postScheduleTransfer = async (req, res) => {
     const total = prod.recordset[0].total || 0;
 
     // 3️⃣ used qty WITHOUT current row
-    const used = await pool.request()
+    const used = await pool
+      .request()
       .input("date", sql.Date, Schedule_Date)
       .input("hatchery", sql.VarChar, Hatchery)
-      .input("id", sql.Int, id)
-      .query(`
+      .input("id", sql.Int, id).query(`
         SELECT ISNULL(SUM(Qty),0) as used
         FROM LayerChickSchedule
         WHERE CAST(Schedule_Date AS DATE) = @date
@@ -514,25 +498,24 @@ exports.postScheduleTransfer = async (req, res) => {
     const usedQty = used.recordset[0].used || 0;
 
     // 4️⃣ validation
-    if ((usedQty + Qty) > total) {
+    if (usedQty + Qty > total) {
       return res.status(400).json({
-        message: `Only ${total - usedQty} chicks available`
+        message: `Only ${total - usedQty} chicks available`,
       });
     }
 
     // 5️⃣ update
-    await pool.request()
+    await pool
+      .request()
       .input("id", sql.Int, id)
       .input("Qty", sql.Int, Qty)
-      .input("Hatchery", sql.VarChar, Hatchery)
-      .query(`
+      .input("Hatchery", sql.VarChar, Hatchery).query(`
         UPDATE LayerChickSchedule
         SET Qty=@Qty, Hatchery=@Hatchery
         WHERE Id=@id
       `);
 
     res.json({ message: "Updated successfully" });
-
   } catch (err) {
     console.log(err);
     res.status(500).send("Error");
@@ -544,7 +527,8 @@ exports.deleteLayerSchedule = async (req, res) => {
     const { id } = req.params;
     const pool = await poolPromise;
 
-    await pool.request()
+    await pool
+      .request()
       .input("id", sql.Int, id)
       .query(`DELETE FROM LayerChickSchedule WHERE Id=@id`);
 
