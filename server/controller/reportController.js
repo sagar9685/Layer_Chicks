@@ -9,22 +9,181 @@ exports.addProduction = async (req, res) => {
 
     const pool = await poolPromise;
 
+    // 🔍 Check existing
+    const checkResult = await pool
+      .request()
+      .input("HatchDate", sql.Date, HatchDate)
+      .input("Hatchries", sql.VarChar, Hatchries).query(`
+        SELECT Id FROM ExpectedLayerChicks 
+        WHERE HatchDate = @HatchDate AND Hatchries = @Hatchries
+      `);
+
+    const newQty = Number(ExpectedChicks);
+
+    // ===============================
+    // ✅ IF EXISTS → UPDATE
+    // ===============================
+    if (checkResult.recordset.length > 0) {
+      // 🔥 Scheduled qty
+      const scheduleResult = await pool
+        .request()
+        .input("date", sql.Date, HatchDate)
+        .input("hatchery", sql.VarChar, Hatchries).query(`
+          SELECT ISNULL(SUM(Qty),0) as used
+          FROM LayerChickSchedule
+          WHERE CAST(Schedule_Date AS DATE) = @date
+          AND Hatchery = @hatchery
+        `);
+
+      const usedQty = scheduleResult.recordset[0].used || 0;
+
+      // ❌ Block
+      if (newQty < usedQty) {
+        return res.status(400).json({
+          message: `Cannot reduce below scheduled (${usedQty})`,
+        });
+      }
+
+      // ✅ Update (SET)
+      await pool
+        .request()
+        .input("HatchDate", sql.Date, HatchDate)
+        .input("Hatchries", sql.VarChar, Hatchries)
+        .input("ExpectedChicks", sql.Int, newQty).query(`
+          UPDATE ExpectedLayerChicks
+          SET ExpectedChicks = @ExpectedChicks,
+              LoadingDate = @LoadingDate
+          WHERE HatchDate = @HatchDate AND Hatchries = @Hatchries
+        `);
+
+      return res.json({
+        message: "Production updated successfully",
+      });
+    }
+
+    // ===============================
+    // ✅ INSERT NEW
+    // ===============================
     await pool
       .request()
       .input("HatchDate", sql.Date, HatchDate)
       .input("LoadingDate", sql.Date, LoadingDate)
       .input("Hatchries", sql.VarChar, Hatchries)
-      .input("ExpectedChicks", sql.Int, ExpectedChicks).query(`
-        INSERT INTO ExpectedLayerChicks
+      .input("ExpectedChicks", sql.Int, newQty).query(`
+        INSERT INTO ExpectedLayerChicks 
         (HatchDate, LoadingDate, Hatchries, ExpectedChicks)
-        VALUES
+        VALUES 
         (@HatchDate, @LoadingDate, @Hatchries, @ExpectedChicks)
       `);
 
-    res.json({ message: "Production added successfully" });
+    res.json({ message: "New production added successfully" });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Error adding production" });
+  }
+};
+
+exports.editProduction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { HatchDate, LoadingDate, Hatchries, ExpectedChicks } = req.body;
+
+    const pool = await poolPromise;
+
+    const newQty = Number(ExpectedChicks);
+
+    // 🔥 scheduled qty
+    const scheduleResult = await pool
+      .request()
+      .input("date", sql.Date, HatchDate)
+      .input("hatchery", sql.VarChar, Hatchries).query(`
+        SELECT ISNULL(SUM(Qty),0) as used
+        FROM LayerChickSchedule
+        WHERE CAST(Schedule_Date AS DATE) = @date
+        AND Hatchery = @hatchery
+      `);
+
+    const usedQty = scheduleResult.recordset[0].used || 0;
+
+    // ❌ block
+    if (newQty < usedQty) {
+      return res.status(400).json({
+        message: `Cannot reduce below scheduled (${usedQty})`,
+      });
+    }
+
+    // ✅ update
+    await pool
+      .request()
+      .input("id", sql.Int, id)
+      .input("HatchDate", sql.Date, HatchDate)
+      .input("LoadingDate", sql.Date, LoadingDate)
+      .input("Hatchries", sql.VarChar, Hatchries)
+      .input("ExpectedChicks", sql.Int, newQty).query(`
+        UPDATE ExpectedLayerChicks
+        SET HatchDate = @HatchDate,
+            LoadingDate = @LoadingDate,
+            Hatchries = @Hatchries,
+            ExpectedChicks = @ExpectedChicks
+        WHERE Id = @id
+      `);
+
+    res.json({ message: "Production edited successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error editing production" });
+  }
+};
+
+exports.deleteProduction = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const pool = await poolPromise;
+
+    // 🔍 get record
+    const result = await pool.request().input("id", sql.Int, id).query(`
+        SELECT HatchDate, Hatchries 
+        FROM ExpectedLayerChicks 
+        WHERE Id = @id
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: "Record not found" });
+    }
+
+    const { HatchDate, Hatchries } = result.recordset[0];
+
+    // 🔥 check schedule
+    const scheduleResult = await pool
+      .request()
+      .input("date", sql.Date, HatchDate)
+      .input("hatchery", sql.VarChar, Hatchries).query(`
+        SELECT ISNULL(SUM(Qty),0) as used
+        FROM LayerChickSchedule
+        WHERE CAST(Schedule_Date AS DATE) = @date
+        AND Hatchery = @hatchery
+      `);
+
+    const usedQty = scheduleResult.recordset[0].used || 0;
+
+    // ❌ block delete
+    if (usedQty > 0) {
+      return res.status(400).json({
+        message: "Cannot delete production, schedule exists",
+      });
+    }
+
+    // ✅ delete
+    await pool.request().input("id", sql.Int, id).query(`
+        DELETE FROM ExpectedLayerChicks
+        WHERE Id = @id
+      `);
+
+    res.json({ message: "Deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error deleting production" });
   }
 };
 
@@ -451,74 +610,100 @@ exports.postScheduleTransfer = async (req, res) => {
 
 exports.updateLayerSchedule = async (req, res) => {
   try {
-    const { id } = req.params;
+    // ✅ Convert & validate ID
+    const id = Number(req.params.id);
+
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    // ✅ Get body
     const { Qty, Hatchery, Schedule_Date } = req.body;
+
+    const qty = Number(Qty);
+
+    if (!qty || isNaN(qty)) {
+      return res.status(400).json({ message: "Invalid Quantity" });
+    }
+
+    if (!Hatchery || !Schedule_Date) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    console.log("👉 ID:", id);
+    console.log("👉 BODY:", req.body);
 
     const pool = await poolPromise;
 
-    // 1️⃣ current record ka old qty lo
+    // 1️⃣ Get current record
     const current = await pool.request().input("id", sql.Int, id).query(`
         SELECT Qty, Hatchery, Schedule_Date 
         FROM LayerChickSchedule 
-        WHERE Id=@id
+        WHERE Id = @id
       `);
 
     if (current.recordset.length === 0) {
       return res.status(404).json({ message: "Record not found" });
     }
 
-    const oldQty = current.recordset[0].Qty;
-
-    // 2️⃣ total production
+    // 2️⃣ Total production for that date + hatchery
     const prod = await pool
       .request()
       .input("date", sql.Date, Schedule_Date)
       .input("hatchery", sql.VarChar, Hatchery).query(`
-        SELECT ISNULL(SUM(ExpectedChicks),0) as total
+        SELECT ISNULL(SUM(ExpectedChicks), 0) as total
         FROM ExpectedLayerChicks
         WHERE CAST(HatchDate AS DATE) = @date
         AND Hatchries = @hatchery
       `);
 
-    const total = prod.recordset[0].total || 0;
+    const total = Number(prod.recordset[0].total) || 0;
 
-    // 3️⃣ used qty WITHOUT current row
+    // 3️⃣ Used qty (excluding current row)
     const used = await pool
       .request()
       .input("date", sql.Date, Schedule_Date)
       .input("hatchery", sql.VarChar, Hatchery)
       .input("id", sql.Int, id).query(`
-        SELECT ISNULL(SUM(Qty),0) as used
+        SELECT ISNULL(SUM(Qty), 0) as used
         FROM LayerChickSchedule
         WHERE CAST(Schedule_Date AS DATE) = @date
         AND Hatchery = @hatchery
-        AND Id != @id   -- 🔥 IMPORTANT FIX
+        AND Id != @id
       `);
 
-    const usedQty = used.recordset[0].used || 0;
+    const usedQty = Number(used.recordset[0].used) || 0;
 
-    // 4️⃣ validation
-    if (usedQty + Qty > total) {
+    console.log("👉 TOTAL:", total);
+    console.log("👉 USED:", usedQty);
+    console.log("👉 NEW QTY:", qty);
+
+    // 4️⃣ Validation
+    if (usedQty + qty > total) {
       return res.status(400).json({
         message: `Only ${total - usedQty} chicks available`,
       });
     }
 
-    // 5️⃣ update
+    // 5️⃣ Update
     await pool
       .request()
       .input("id", sql.Int, id)
-      .input("Qty", sql.Int, Qty)
-      .input("Hatchery", sql.VarChar, Hatchery).query(`
+      .input("Qty", sql.Int, qty)
+      .input("Hatchery", sql.VarChar, Hatchery)
+      .input("date", sql.Date, Schedule_Date).query(`
         UPDATE LayerChickSchedule
-        SET Qty=@Qty, Hatchery=@Hatchery
-        WHERE Id=@id
+        SET 
+          Qty = @Qty,
+          Hatchery = @Hatchery,
+          Schedule_Date = @date
+        WHERE Id = @id
       `);
 
     res.json({ message: "Updated successfully" });
   } catch (err) {
-    console.log(err);
-    res.status(500).send("Error");
+    console.error("❌ UPDATE ERROR:", err);
+    res.status(500).json({ message: "Server Error" });
   }
 };
 

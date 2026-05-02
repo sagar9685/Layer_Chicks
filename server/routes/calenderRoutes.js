@@ -15,7 +15,9 @@ const {
   addLayerSchedule,
   getLayerCustomers,
   deleteLayerSchedule,
-  updateLayerSchedule
+  updateLayerSchedule,
+  editProduction,
+  deleteProduction,
 } = require("../controller/reportController");
 
 router.get("/schedule/:date", getSchedule);
@@ -34,11 +36,13 @@ router.get("/due-graph-datewise", dueGraphwithDate);
 
 router.post("/transfer", postScheduleTransfer);
 
-router.post('/production',addProduction)
-router.get("/hatcheries", getHatcheries );
+router.post("/production", addProduction);
+router.put("/production/:id", editProduction);
+router.delete("/production/:id", deleteProduction);
+router.get("/hatcheries", getHatcheries);
 router.post("/layer-schedule", addLayerSchedule);
 router.get("/layer-customers", getLayerCustomers);
-router.delete('/layer-schedule/:id',deleteLayerSchedule)
-router.put('/layer-schedule/:id',updateLayerSchedule)
+router.delete("/layer-schedule/:id", deleteLayerSchedule);
+router.put("/layer-schedule/:id", updateLayerSchedule);
 
 module.exports = router;

@@ -55,7 +55,7 @@ const Sechdule = () => {
     try {
       // Aisi API hit karein jo us month ke active dates bataye
       const res = await axios.get(
-        `http://localhost:5007/api/scheduled-dates/${year}/${month}`,
+        `http://137.97.174.50:5007/api/scheduled-dates/${year}/${month}`,
       );
       setScheduledDays(res.data); // Expected format: ["2026-04-10", "2026-04-15"]
     } catch (err) {
@@ -63,11 +63,41 @@ const Sechdule = () => {
     }
   };
 
+  const handleDeleteProduction = async (id) => {
+    console.log("DELETE ID:", id, typeof id); // 👈 check
+
+    if (!id || isNaN(id)) {
+      alert("Invalid ID: " + id);
+      return;
+    }
+
+    try {
+      await axios.delete(`http://localhost:5007/api/production/${id}`);
+      alert("Deleted successfully");
+      fetchProductionDataOnly();
+    } catch (err) {
+      console.error(err);
+      alert("Delete failed");
+    }
+  };
+
+  const handleEditProduction = (row) => {
+    console.log("EDIT ROW on prod:", row); // 👈 check here
+
+    setEditId(row.id);
+    setHatchDate(row.HatchDate.split("T")[0]);
+    setLoadingDate(row.LoadingDate.split("T")[0]);
+    setHatchries(row.Hatchries);
+    setExpectedQty(row.ExpectedChicks);
+    setShowAddProduction(true);
+  };
+
   // useEffect mein isse add karein
 
   const fetchHatcheries = async () => {
     try {
-      const res = await axios.get("http://localhost:5007/api/hatcheries");
+      const res = await axios.get("http://137.97.174.50:5007/api/hatcheries");
+      console.log(res.data, "Hatch ka name");
       setHatcheryList(res.data);
     } catch (err) {
       console.error("Error fetching hatcheries", err);
@@ -75,37 +105,48 @@ const Sechdule = () => {
   };
 
   const fetchCustomers = async () => {
-    const res = await axios.get("http://localhost:5007/api/layer-customers");
+    const res = await axios.get(
+      "http://137.97.174.50:5007/api/layer-customers",
+    );
+    console.log("Customer List aayegi:", res.data); // ✅ yaha
 
     setLayerCustomerList(res.data);
   };
 
   const saveProduction = async () => {
     if (!hatchDate || !loadingDate || !expectedQty || !hatchries) {
-      alert("Please fill all fields");
+      alert("Fill all fields");
       return;
     }
 
     try {
-      await axios.post("http://localhost:5007/api/production", {
-        HatchDate: hatchDate,
-        LoadingDate: loadingDate,
-        Hatchries: hatchries,
-        ExpectedChicks: expectedQty,
-      });
+      if (editId) {
+        // 👉 UPDATE
+        await axios.put(`http://localhost:5007/api/production/${editId}`, {
+          HatchDate: hatchDate,
+          LoadingDate: loadingDate,
+          Hatchries: hatchries,
+          ExpectedChicks: expectedQty,
+        });
 
-      alert("Production Added");
+        alert("Updated successfully");
+      } else {
+        // 👉 ADD
+        await axios.post("http://localhost:5007/api/production", {
+          HatchDate: hatchDate,
+          LoadingDate: loadingDate,
+          Hatchries: hatchries,
+          ExpectedChicks: expectedQty,
+        });
+
+        alert("Added successfully");
+      }
 
       setShowAddProduction(false);
-      setHatchDate("");
-      setLoadingDate("");
-      setExpectedQty("");
-      setHatchries("");
-
+      setEditId(null);
       fetchProductionDataOnly();
     } catch (err) {
-      console.error(err);
-      alert("Error saving production");
+      alert(err.response?.data?.message || "Error");
     }
   };
 
@@ -146,49 +187,53 @@ const Sechdule = () => {
       return;
     }
 
+    if (
+      !scheduleCustCode ||
+      !scheduleCust ||
+      !scheduleQty ||
+      !scheduleHatchery
+    ) {
+      alert("Fill all fields");
+      return;
+    }
+
     try {
-      // ✅ EDIT CASE
+      const payload = {
+        Schedule_Date: selectedDateData.date,
+        Cust_Code: scheduleCustCode,
+        Cust_Name: scheduleCust,
+        Hatchery: scheduleHatchery,
+        ProductName: "Layer",
+        Qty: Number(scheduleQty),
+      };
+
+      console.log("PAYLOAD:", payload);
+
       if (editId) {
-        await axios.put(`http://localhost:5007/api/layer-schedule/${editId}`, {
-          Schedule_Date: selectedDateData.date,
-          Cust_Code: scheduleCustCode,
-          Cust_Name: scheduleCust,
-          Hatchery: scheduleHatchery,
-          ProductName: "Layer",
-          Qty: scheduleQty,
-        });
-
+        await axios.put(
+          `http://137.97.174.50:5007/api/layer-schedule/${editId}`,
+          payload,
+        );
         alert("Updated successfully");
-      }
-      // ✅ ADD CASE
-      else {
-        await axios.post("http://localhost:5007/api/layer-schedule", {
-          Schedule_Date: selectedDateData.date,
-          Cust_Code: scheduleCustCode,
-          Cust_Name: scheduleCust,
-          Hatchery: scheduleHatchery,
-          ProductName: "Layer",
-          Qty: scheduleQty,
-        });
-
+      } else {
+        await axios.post(
+          "http://137.97.174.50:5007/api/layer-schedule",
+          payload,
+        );
         alert("Scheduled successfully");
       }
 
-      // ✅ refresh data
       fetchScheduleCustomer(selectedDateData.date);
 
-      // ✅ reset form
       setScheduleCust("");
       setScheduleCustCode("");
       setScheduleQty("");
       setScheduleHatchery("");
       setEditId(null);
-
-      // ✅ close modal
       setShowAddSchedule(false);
     } catch (err) {
-      console.error(err);
-      alert("Error saving schedule");
+      console.log("ERROR:", err.response?.data);
+      alert(err.response?.data?.message || "Error saving schedule");
     }
   };
 
@@ -205,7 +250,7 @@ const Sechdule = () => {
     if (!window.confirm("Delete this record?")) return;
 
     try {
-      const url = `http://localhost:5007/api/layer-schedule/${item.Id}`;
+      const url = `http://137.97.174.50:5007/api/layer-schedule/${item.Id}`;
       console.log("DELETE URL:", url); // 👈 final API check
 
       const res = await axios.delete(url);
@@ -221,13 +266,16 @@ const Sechdule = () => {
     }
   };
 
-  const handleEdit = (item) => {
+  const handleEdit = async (item) => {
+    await fetchCustomers(); // 👈 IMPORTANT
+    await fetchHatcheries(); // 👈 IMPORTANT
+
     console.log("EDIT ITEM:", item);
 
-    setEditId(item.Id); // 👈 important
-    setScheduleCust(item.Cust_Name);
-    setScheduleCustCode(item.Cust_Code);
-    setScheduleQty(item.QtyNet);
+    setEditId(item.Id);
+    setScheduleCustCode(item.Cust_Code || item.CustomerCode);
+    setScheduleCust(item.Cust_Name || item.CustomerName);
+    setScheduleQty(item.Qty || item.QtyNet);
     setScheduleHatchery(item.Hatchery);
 
     setShowAddSchedule(true);
@@ -341,8 +389,12 @@ const Sechdule = () => {
 
   const fetchScheduleCustomer = async (dateStr) => {
     try {
-      const res = await axios.get(`http://localhost:5007/api/sch/${dateStr}`);
-      console.log(scheduleList, "sechdul aa guaa");
+      const res = await axios.get(
+        `http://137.97.174.50:5007/api/sch/${dateStr}`,
+      );
+
+      console.log("Schedule API DATA:", res.data); // ✅ ADD THIS
+
       setScheduleList(res.data);
     } catch (err) {
       console.error("Error fetching schedule customer:", err);
@@ -979,7 +1031,9 @@ const Sechdule = () => {
                               {groupedData[hatch].map((x, i) => (
                                 <tr key={x.Id}>
                                   <td>{i + 1}</td>
-                                  <td className="text-start">{x.Cust_Name}</td>
+                                  <td className="text-start">
+                                    {x.Cust_Name || x.CustomerName || "N/A"}
+                                  </td>
                                   <td className="text-center">{x.Hatchery}</td>
                                   <td className="text-end fw-bold text-primary">
                                     {Number(x.QtyNet).toLocaleString()} pcs
@@ -1193,6 +1247,7 @@ const Sechdule = () => {
                     <th>Hatchery</th> {/* new */}
                     <th>Expected Qty</th>
                     <th>Loading Date</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1212,6 +1267,22 @@ const Sechdule = () => {
                         </td>
 
                         <td>{formatDateDisplay(row.LoadingDate)}</td>
+
+                        <td>
+                          <button
+                            className="btn btn-sm btn-warning me-1"
+                            onClick={() => handleEditProduction(row)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleDeleteProduction(row.id)}
+                          >
+                            Delete
+                          </button>
+                        </td>
                       </tr>
                     ))
                   ) : (
@@ -1325,19 +1396,27 @@ const Sechdule = () => {
                   value={scheduleCustCode}
                   onChange={(e) => {
                     const code = e.target.value;
+
                     const cust = layerCustomerList.find(
-                      (c) => c.CustomerCode === code,
+                      (c) => c.CustomerCode === code || c.Cust_Code === code,
                     );
 
+                    console.log("Selected Code:", code); // ✅ ADD THIS
+                    console.log("Customer Found:", cust); // ✅ ADD THIS
                     setScheduleCustCode(code);
-                    setScheduleCust(cust?.CustomerName || "");
+                    setScheduleCust(
+                      cust?.CustomerName || cust?.Cust_Name || "",
+                    );
                   }}
                 >
                   <option value="">Select Customer</option>
 
                   {layerCustomerList.map((x) => (
-                    <option key={x.CustomerCode} value={x.CustomerCode}>
-                      {x.CustomerName}
+                    <option
+                      key={x.CustomerCode || x.Cust_Code}
+                      value={x.CustomerCode || x.Cust_Code}
+                    >
+                      {x.CustomerName || x.Cust_Name}
                     </option>
                   ))}
                 </select>
