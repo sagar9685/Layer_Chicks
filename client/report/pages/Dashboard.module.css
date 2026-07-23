@@ -1,0 +1,626 @@
+/* ============================================================
+   Dashboard.module.css (UPDATED - added sidebar collapsed class)
+   ============================================================ */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.appContainer {
+  display: flex;
+  min-height: 100vh;
+  background: #f1f5f9;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+.mainContent {
+  flex: 1;
+  margin-left: 270px;
+  padding: 24px 32px 40px 32px;
+  transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.mainContent.sidebarCollapsed {
+  margin-left: 72px;
+}
+
+/* Rest of the CSS remains the same as before */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0 24px 0;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 28px;
+}
+
+.headerTitle h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.headerTitle p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  font-weight: 400;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dateBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+}
+
+.searchWrapper {
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 4px 14px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.searchWrapper:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.searchIcon {
+  color: #94a3b8;
+}
+
+.searchInput {
+  border: none;
+  background: transparent;
+  padding: 8px 8px 8px 6px;
+  font-size: 13px;
+  outline: none;
+  width: 180px;
+  color: #0f172a;
+  font-family: inherit;
+}
+
+.searchInput::placeholder {
+  color: #94a3b8;
+}
+
+.iconBtn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 50%;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #475569;
+}
+
+.iconBtn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.dashboardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px 24px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.02);
+  border: 1px solid #eef2f6;
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.cardLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  margin: 0 0 4px 0;
+  letter-spacing: 0.2px;
+}
+
+.cardValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.cardIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+}
+
+.cardFooter {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.chartsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.chartCard {
+  padding: 20px 24px 24px 24px;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.chartHeader h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.chartBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.lineChart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 120px;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.barWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bar {
+  width: 100%;
+  max-width: 24px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #3b82f6, #8b5cf6);
+  transition: height 0.4s ease;
+  min-height: 4px;
+}
+
+.chartLabels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.donutContainer {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.donut {
+  flex-shrink: 0;
+}
+
+.donutLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legendValue {
+  margin-left: auto;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.horizontalBars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.hBarRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hBarLabel {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.hBarTrack {
+  flex: 1;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hBarFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.hBarValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  width: 70px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.areaChart {
+  width: 100%;
+  height: 100px;
+  margin-top: 4px;
+}
+
+.areaChart svg {
+  width: 100%;
+  height: 100%;
+}
+
+.bottomSection {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 20px;
+}
+
+.tableCard {
+  padding: 20px 24px 24px 24px;
+  overflow: hidden;
+}
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.tableHeader h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.viewAllLink {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #3b82f6;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.viewAllLink:hover {
+  color: #1d4ed8;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table thead th {
+  text-align: left;
+  padding: 10px 8px 10px 0;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.table tbody td {
+  padding: 12px 8px 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+
+.table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.farmerName {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.code {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.count {
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.due {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.upcoming {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+}
+
+.future {
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+}
+
+.priority {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.high {
+  background: rgba(239, 68, 68, 0.06);
+  color: #ef4444;
+}
+
+.medium {
+  background: rgba(245, 158, 11, 0.06);
+  color: #f59e0b;
+}
+
+.low {
+  background: rgba(16, 185, 129, 0.06);
+  color: #10b981;
+}
+
+.summaryPanel {
+  display: flex;
+  flex-direction: column;
+}
+
+.summaryCard {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #eef2f6;
+}
+
+.summaryCard h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.summaryItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.summaryItem span {
+  flex: 1;
+}
+
+.summaryItem strong {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+@media (max-width: 1280px) {
+  .kpiGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .chartsRow {
+    grid-template-columns: 1fr;
+  }
+  .bottomSection {
+    grid-template-columns: 1fr;
+  }
+  .summaryPanel {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .summaryCard {
+    flex: 1;
+    min-width: 240px;
+  }
+}
+
+@media (max-width: 768px) {
+  .mainContent {
+    margin-left: 0 !important;
+    padding: 16px;
+  }
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .headerActions {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .searchInput {
+    width: 120px;
+  }
+  .kpiGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .card {
+    padding: 16px;
+  }
+  .cardValue {
+    font-size: 22px;
+  }
+  .bottomSection {
+    grid-template-columns: 1fr;
+  }
+  .summaryCard {
+    min-width: unset;
+  }
+  .donutContainer {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .kpiGrid {
+    grid-template-columns: 1fr;
+  }
+  .headerTitle h1 {
+    font-size: 20px;
+  }
+  .searchInput {
+    width: 100px;
+  }
+  .table thead th,
+  .table tbody td {
+    font-size: 12px;
+    padding: 8px 4px;
+  }
+}

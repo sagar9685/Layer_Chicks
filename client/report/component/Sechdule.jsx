@@ -38,6 +38,8 @@ const Sechdule = () => {
   const [editId, setEditId] = useState(null);
   // Existing states ke saath add karein
   const [scheduledDays, setScheduledDays] = useState([]);
+  const [showTentativeCustomer, setShowTentativeCustomer] = useState(false);
+  const [filterDate, setFilterDate] = useState("");
 
   // --- Date Formatter Function (e.g., 1-Jan-26) ---
   const formatDateDisplay = (dateStr) => {
@@ -72,7 +74,7 @@ const Sechdule = () => {
     }
 
     try {
-      await axios.delete(`http://localhost:5007/api/production/${id}`);
+      await axios.delete(`http://137.97.174.50:5007/api/production/${id}`);
       alert("Deleted successfully");
       fetchProductionDataOnly();
     } catch (err) {
@@ -122,7 +124,7 @@ const Sechdule = () => {
     try {
       if (editId) {
         // 👉 UPDATE
-        await axios.put(`http://localhost:5007/api/production/${editId}`, {
+        await axios.put(`http://137.97.174.50:5007/api/production/${editId}`, {
           HatchDate: hatchDate,
           LoadingDate: loadingDate,
           Hatchries: hatchries,
@@ -132,7 +134,7 @@ const Sechdule = () => {
         alert("Updated successfully");
       } else {
         // 👉 ADD
-        await axios.post("http://localhost:5007/api/production", {
+        await axios.post("http://137.97.174.50:5007/api/production", {
           HatchDate: hatchDate,
           LoadingDate: loadingDate,
           Hatchries: hatchries,
@@ -754,6 +756,7 @@ const Sechdule = () => {
                       <th>Hatch Date</th>
                       <th className="text-end">Expected Chicks</th>
                       <th className="text-end">Remaining</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -763,10 +766,8 @@ const Sechdule = () => {
                           row.HatchDate.split("T")[0] === selectedDateData.date,
                       )
                       .map((row, i) => {
-                        console.log("production row =>", row); // 👈 ADD THIS
-
                         const usedQty = scheduleList
-                          .filter((x) => x.Hatchery === row.Hatchries) // 👈 yahi change
+                          .filter((x) => x.Hatchery === row.Hatchries)
                           .reduce(
                             (acc, curr) => acc + Number(curr.QtyNet || 0),
                             0,
@@ -775,7 +776,7 @@ const Sechdule = () => {
                         const remaining = (row.ExpectedChicks || 0) - usedQty;
 
                         return (
-                          <tr key={i}>
+                          <tr key={row.id || i}>
                             <td>{row.Hatchries}</td>
 
                             <td>{formatDateDisplay(row.HatchDate)}</td>
@@ -786,6 +787,22 @@ const Sechdule = () => {
 
                             <td className="text-end fw-bold text-success">
                               {remaining.toLocaleString()}
+                            </td>
+
+                            <td className="text-center">
+                              <button
+                                className="btn btn-sm btn-warning me-1"
+                                onClick={() => handleEditProduction(row)}
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleDeleteProduction(row.id)}
+                              >
+                                Delete
+                              </button>
                             </td>
                           </tr>
                         );
@@ -800,54 +817,68 @@ const Sechdule = () => {
                   <h6 className="fw-bold text-dark mb-0">
                     📋 Tentative customer as 75 weeks
                   </h6>
-                  <span className="badge bg-info">
-                    {selectedDateData.items.length} Records
-                  </span>
+
+                  <div className="d-flex align-items-center gap-2">
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() =>
+                        setShowTentativeCustomer(!showTentativeCustomer)
+                      }
+                    >
+                      {showTentativeCustomer ? "Hide" : "Show"}
+                    </button>
+
+                    <span className="badge bg-info">
+                      {selectedDateData.items.length} Records
+                    </span>
+                  </div>
                 </div>
-                <div className="table-responsive border rounded shadow-sm">
-                  <table className="data-table">
-                    <thead className="table-dark small">
-                      <tr>
-                        <th>Customer</th>
-                        <th>Customer Code</th>
-                        <th>Phone</th>
-                        <th className="text-end">Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedDateData.items.length > 0 ? (
-                        selectedDateData.items.map((row, i) => (
-                          <tr key={i}>
-                            <td className="fw-bold">{row.CustomerName}</td>
-                            <td>{row.CustomerCode}</td>
-                            <td>{row.PhoneNo || "N/A"}</td>
-                            <td className="text-end fw-bold text-primary">
-                              {row.TotalQty?.toLocaleString()}
+                {showTentativeCustomer && (
+                  <div className="table-responsive border rounded shadow-sm">
+                    <table className="data-table">
+                      <thead className="table-dark small">
+                        <tr>
+                          <th>Customer</th>
+                          <th>Customer Code</th>
+                          <th>Phone</th>
+                          <th className="text-end">Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedDateData.items.length > 0 ? (
+                          selectedDateData.items.map((row, i) => (
+                            <tr key={i}>
+                              <td className="fw-bold">{row.CustomerName}</td>
+                              <td>{row.CustomerCode}</td>
+                              <td>{row.PhoneNo || "N/A"}</td>
+                              <td className="text-end fw-bold text-primary">
+                                {row.TotalQty?.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="4" className="text-center text-muted">
+                              No customer data for this date
                             </td>
                           </tr>
-                        ))
-                      ) : (
+                        )}
+                      </tbody>
+                      <tfoot className="table-secondary">
                         <tr>
-                          <td colSpan="4" className="text-center text-muted">
-                            No customer data for this date
+                          <td colSpan="3" className="text-end fw-bold">
+                            Total:
+                          </td>
+                          <td className="text-end fw-bold text-primary">
+                            {calculateTotalQty(
+                              selectedDateData.items,
+                            ).toLocaleString()}
                           </td>
                         </tr>
-                      )}
-                    </tbody>
-                    <tfoot className="table-secondary">
-                      <tr>
-                        <td colSpan="3" className="text-end fw-bold">
-                          Total:
-                        </td>
-                        <td className="text-end fw-bold text-primary">
-                          {calculateTotalQty(
-                            selectedDateData.items,
-                          ).toLocaleString()}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Customer Demand Details Section */}
@@ -1239,7 +1270,25 @@ const Sechdule = () => {
                 </button>
               </div>
             </div>
-            <div className="modal-body">
+            <div className="d-flex justify-content-end align-items-center gap-2 mb-3">
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: "200px" }}
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+              />
+
+              <button
+                className="btn btn-outline-secondary"
+                onClick={() => setFilterDate("")}
+              >
+                Clear
+              </button>
+            </div>
+            {/* <div className="modal-body"> */}
+            {/* <div className="production-table-wrapper"> */}
+            <div className="table-container">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -1251,8 +1300,15 @@ const Sechdule = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {productionData.length > 0 ? (
-                    productionData.map((row, i) => (
+                  {[...productionData]
+                    .filter((row) => {
+                      if (!filterDate) return true;
+                      return row.HatchDate.split("T")[0] === filterDate;
+                    })
+                    .sort(
+                      (a, b) => new Date(a.HatchDate) - new Date(b.HatchDate),
+                    )
+                    .map((row, i) => (
                       <tr key={i}>
                         <td>{formatDateDisplay(row.HatchDate)}</td>
 
@@ -1263,7 +1319,11 @@ const Sechdule = () => {
                         </td>
 
                         <td>
-                          <strong>{row.ExpectedChicks || row.Qty || 0}</strong>
+                          <strong>
+                            {Number(
+                              row.ExpectedChicks || row.Qty || 0,
+                            ).toLocaleString()}
+                          </strong>
                         </td>
 
                         <td>{formatDateDisplay(row.LoadingDate)}</td>
@@ -1284,11 +1344,56 @@ const Sechdule = () => {
                           </button>
                         </td>
                       </tr>
-                    ))
+                    )).length > 0 ? (
+                    [...productionData]
+                      .filter((row) => {
+                        if (!filterDate) return true;
+                        return row.HatchDate.split("T")[0] === filterDate;
+                      })
+                      .sort(
+                        (a, b) => new Date(a.HatchDate) - new Date(b.HatchDate),
+                      )
+                      .map((row, i) => (
+                        <tr key={i}>
+                          <td>{formatDateDisplay(row.HatchDate)}</td>
+
+                          <td>
+                            <strong>
+                              {row.Hatchries || row.Hatchery || "-"}
+                            </strong>
+                          </td>
+
+                          <td>
+                            <strong>
+                              {Number(
+                                row.ExpectedChicks || row.Qty || 0,
+                              ).toLocaleString()}
+                            </strong>
+                          </td>
+
+                          <td>{formatDateDisplay(row.LoadingDate)}</td>
+
+                          <td>
+                            <button
+                              className="btn btn-sm btn-warning me-1"
+                              onClick={() => handleEditProduction(row)}
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => handleDeleteProduction(row.id)}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                   ) : (
                     <tr>
                       <td
-                        colSpan="3"
+                        colSpan="5"
                         style={{ textAlign: "center", padding: "20px" }}
                       >
                         No production data available
@@ -1416,7 +1521,8 @@ const Sechdule = () => {
                       key={x.CustomerCode || x.Cust_Code}
                       value={x.CustomerCode || x.Cust_Code}
                     >
-                      {x.CustomerName || x.Cust_Name}
+                      {x.CustomerName || x.Cust_Name} ---
+                      {x.CustomerCode}
                     </option>
                   ))}
                 </select>

@@ -1,0 +1,932 @@
+/* ============================================================
+   FarmerManagement.module.css (UPDATED)
+   ============================================================ */
+.container {
+  display: flex;
+  min-height: 100vh;
+  background: #f1f5f9;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+/* Main Content */
+.mainContent {
+  flex: 1;
+  margin-left: 270px;
+  padding: 24px 32px 40px 32px;
+  transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.mainContent.sidebarCollapsed {
+  margin-left: 72px;
+}
+
+.mainContent.withDrawer {
+  margin-right: 420px;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0 20px 0;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pageTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.pageSubtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.searchBox {
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 14px;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.searchBox:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.searchBox input {
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #0f172a;
+  background: transparent;
+  min-width: 200px;
+  font-family: inherit;
+}
+
+.searchBox input::placeholder {
+  color: #94a3b8;
+}
+
+.searchIcon {
+  color: #94a3b8;
+}
+
+.btnPrimary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btnPrimary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+}
+
+.btnPrimary:active {
+  transform: scale(0.95);
+}
+
+/* Filter Bar */
+.filterBar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.selectFilter {
+  padding: 8px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+  font-size: 13px;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+  min-width: 140px;
+}
+
+.selectFilter:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.datePicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+  font-size: 13px;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+/* KPI Cards */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kpiCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: white;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid #eef2f6;
+  transition: all 0.2s ease;
+}
+
+.kpiCard:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.kpiIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.blueBg {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+.greenBg {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+.yellowBg {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+.purpleBg {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+}
+.orangeBg {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+}
+
+.kpiLabel {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.kpiValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 2px 0 0 0;
+}
+
+.trendUp {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.neutralText {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Farmer Grid */
+.farmerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.farmerCard {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid #eef2f6;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.farmerCard:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  transform: translateY(-3px);
+}
+
+.farmerCard.activeCard {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.cardHeader {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.cardMainInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.farmerName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.moreIcon {
+  color: #94a3b8;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.farmerCode {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.infoMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.infoMeta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.statusActive {
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+}
+
+.statusWarning {
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+}
+
+.statusCritical {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.statusInactive {
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+}
+
+.cardStats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 12px;
+}
+
+.cardStats div {
+  display: flex;
+  flex-direction: column;
+}
+
+.statVal {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.statLbl {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.btnSecondary {
+  padding: 6px 14px;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.btnSecondary:hover {
+  background: #e2e8f0;
+}
+
+.btnOutlinePrimary {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #3b82f6;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.btnOutlinePrimary:hover {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* Right Drawer */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  height: 100vh;
+  background: white;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.06);
+  border-left: 1px solid #eef2f6;
+  overflow-y: auto;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawerWithCollapsedSidebar {
+  /* No additional changes needed, drawer stays at right */
+}
+
+.drawerHeader {
+  padding: 20px 24px 16px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.closeBtn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.drawerProfileTop {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.largeAvatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.drawerTitleInfo h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.drawerTitleInfo p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 2px 0;
+}
+
+.drawerTabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  overflow-x: auto;
+  background: white;
+  position: sticky;
+  top: 110px;
+  z-index: 10;
+}
+
+.tabBtn {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.tabBtn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.tabBtn.activeTab {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+}
+
+.drawerBody {
+  flex: 1;
+  padding: 20px 24px 80px 24px;
+  overflow-y: auto;
+}
+
+.drawerKpiGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.drawerKpiCard {
+  background: #f8fafc;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+}
+
+.drawerKpiCard span {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.drawerKpiCard h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 4px 0 0 0;
+}
+
+.highlightText {
+  color: #3b82f6 !important;
+}
+
+.warningText {
+  color: #f59e0b !important;
+}
+
+.healthSection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.healthBox {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+}
+
+.healthBox span {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.healthBox h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 4px 0 8px 0;
+}
+
+.healthBox h3 small {
+  font-size: 14px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.healthStatus {
+  color: #10b981 !important;
+}
+
+.progressBar {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.timelineContainer h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 16px 0;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timelineItem {
+  display: flex;
+  gap: 14px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.blueDot {
+  background: #3b82f6;
+}
+.greenDot {
+  background: #10b981;
+}
+.orangeDot {
+  background: #f59e0b;
+}
+
+.timelineContent {
+  flex: 1;
+}
+
+.timelineHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timelineHeader strong {
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.timelineDate {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.timelineContent p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 2px 0 0 0;
+}
+
+.drawerFooter {
+  padding: 16px 24px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  gap: 12px;
+  background: white;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.drawerFooter .btnSecondary {
+  flex: 1;
+  padding: 10px;
+  font-size: 13px;
+}
+
+.drawerFooter .btnPrimary {
+  flex: 1;
+  justify-content: center;
+  padding: 10px;
+  font-size: 13px;
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .kpiGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 1200px) {
+  .drawer {
+    width: 380px;
+  }
+  .mainContent.withDrawer {
+    margin-right: 380px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .mainContent {
+    margin-left: 72px;
+    padding: 20px;
+  }
+  .mainContent.withDrawer {
+    margin-right: 0;
+  }
+  .drawer {
+    width: 100%;
+    max-width: 420px;
+  }
+  .kpiGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .farmerGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .mainContent {
+    margin-left: 0 !important;
+    padding: 16px;
+  }
+  .mainContent.withDrawer {
+    margin-right: 0;
+  }
+  .drawer {
+    width: 100%;
+    max-width: 100%;
+  }
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .headerActions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .searchBox {
+    width: 100%;
+  }
+  .searchBox input {
+    min-width: unset;
+    width: 100%;
+  }
+  .btnPrimary {
+    width: 100%;
+    justify-content: center;
+  }
+  .filterBar {
+    flex-direction: column;
+  }
+  .kpiGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .farmerGrid {
+    grid-template-columns: 1fr;
+  }
+  .drawerKpiGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .healthSection {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .kpiGrid {
+    grid-template-columns: 1fr;
+  }
+  .cardStats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cardActions {
+    flex-direction: column;
+  }
+  .drawerKpiGrid {
+    grid-template-columns: 1fr;
+  }
+}
+/* ============================================================
+   FarmerManagement.module.css (ADD PAGINATION STYLES)
+   ============================================================ */
+
+/* ... (keep all existing styles) ... */
+
+/* Pagination */
+.paginationContainer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0 8px 0;
+  border-top: 1px solid #eef2f6;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.paginationInfo {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pageBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.pageBtn:hover:not(.disabled):not(.ellipsis) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.pageBtn.activePage {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.pageBtn.activePage:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.pageBtn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.pageBtn.ellipsis {
+  border: none;
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
+  color: #94a3b8;
+}
+
+/* Responsive pagination */
+@media (max-width: 768px) {
+  .paginationContainer {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .pageBtn {
+    min-width: 32px;
+    height: 32px;
+    font-size: 12px;
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pagination {
+    gap: 2px;
+  }
+
+  .pageBtn {
+    min-width: 28px;
+    height: 28px;
+    font-size: 11px;
+    padding: 0 6px;
+    border-radius: 6px;
+  }
+}

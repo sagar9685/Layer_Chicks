@@ -1,0 +1,310 @@
+/* ============================================================
+   AdminSidebar.module.css (IMPROVED)
+   ============================================================ */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  background: linear-gradient(180deg, #0b1120 0%, #1a2332 100%);
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.sidebar.expanded {
+  width: 270px;
+}
+
+.sidebar.collapsed {
+  width: 72px;
+}
+
+.toggleBtn {
+  position: absolute;
+  top: 18px;
+  right: -13px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: 2px solid #0b1120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.toggleBtn:hover {
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+}
+
+.toggleBtn:active {
+  transform: scale(0.95);
+}
+
+.brandHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px 20px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  min-height: 76px;
+}
+
+.logoIcon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  background: linear-gradient(135deg, #3b82f6, #7c3aed);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
+}
+
+.logoIcon svg {
+  color: white;
+}
+
+.logoText h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.logoText p {
+  font-size: 10px;
+  margin: 2px 0 0 0;
+  color: #64748b;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 500;
+  -webkit-text-fill-color: #64748b;
+}
+
+.navContainer {
+  flex: 1;
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  position: relative;
+  font-family: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1f5f9;
+  transform: translateX(4px);
+}
+
+.navItem.active {
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.15),
+    rgba(124, 58, 237, 0.1)
+  );
+  color: #60a5fa;
+  box-shadow: inset 3px 0 0 #3b82f6;
+}
+
+.navItem .icon {
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.navItem.active .icon {
+  color: #60a5fa;
+}
+
+.navItem span {
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+
+.sidebar.collapsed .navItem {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.sidebar.collapsed .navItem .icon {
+  margin: 0;
+}
+
+.tooltip {
+  position: absolute;
+  left: 62px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1e293b;
+  color: #f1f5f9;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  z-index: 100;
+  font-family: inherit;
+}
+
+.navItem:hover .tooltip,
+.bottomActionItem:hover .tooltip {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.promoBox {
+  margin: 8px 12px 12px 12px;
+  padding: 18px 16px;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+.promoTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #64748b;
+  margin: 0 0 4px 0;
+}
+
+.promoHeading {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 4px 0;
+}
+
+.promoText {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 14px 0;
+  line-height: 1.5;
+}
+
+.promoBtn {
+  background: linear-gradient(135deg, #3b82f6, #7c3aed);
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.promoBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35);
+}
+
+.promoBtn:active {
+  transform: scale(0.95);
+}
+
+.bottomActions {
+  padding: 12px 10px 20px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bottomActionItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  position: relative;
+  font-family: inherit;
+}
+
+.bottomActionItem:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #f1f5f9;
+}
+
+.bottomActionItem .icon {
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed .bottomActionItem {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+/* Scrollbar */
+.navContainer::-webkit-scrollbar {
+  width: 3px;
+}
+
+.navContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.navContainer::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 10px;
+}
+
+.navContainer::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

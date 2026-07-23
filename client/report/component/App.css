@@ -63,6 +63,23 @@ body {
   gap: 0.75rem;
 }
 
+.table-container {
+  height: 500px; /* ya 400px */
+  overflow-y: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 999;
+}
+
 .title-section h1 {
   font-size: 2rem;
   color: var(--text-primary);
