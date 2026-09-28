@@ -307,38 +307,88 @@ exports.getDueReport = async (req, res) => {
     const { fromDate, toDate } = req.query;
 
     if (!fromDate || !toDate) {
-      return res.status(400).json({ message: "fromDate & toDate required" });
+      return res.status(400).json({
+        message: "fromDate & toDate required",
+      });
     }
 
-    await connectDB(); // ✅ now works
+    await connectDB();
 
     const result = await sql.query`
       SELECT
         p.AccName AS CustomerName,
-       p.AccCode AS CustomerCode,
+        p.AccCode AS CustomerCode,
         a.phone AS PhoneNo,
-        FORMAT(DATEADD(WEEK, 75, p.HatchDate), 'yyyy-MM') AS DueMonth,
-        CAST(DATEADD(WEEK, 75, p.HatchDate) AS DATE) AS DueDate,
-        SUM(p.Qty) AS TotalQty
+
+        FORMAT(
+          DATEADD(WEEK, 80, p.HatchDate),
+          'yyyy-MM'
+        ) AS DueMonth,
+
+        CAST(
+          DATEADD(WEEK, 80, p.HatchDate)
+          AS DATE
+        ) AS DueDate,
+
+        SUM(ISNULL(p.Qty, 0)) AS TotalQty
+
       FROM PrintData p
+
       LEFT JOIN ACC_HEAD_PHHA_2526 a
         ON a.account_code = p.AccCode
         AND a.group_name = 'customer'
-      WHERE p.ProductName = 'Layer Chicks' and p.cmp_id ='PHHA' and p.Vou_type<>'PURCHASE(GST)'
-        AND DATEADD(WEEK, 75, p.HatchDate)
-            BETWEEN ${fromDate} AND ${toDate}
+
+      WHERE
+        p.ProductName = 'Layer Chicks'
+
+        AND p.Cmp_id = 'PHHA'
+
+        AND ISNULL(
+          p.Vou_type,
+          ''
+        ) <> 'PURCHASE(GST)'
+
+        AND p.AccCode IS NOT NULL
+
+        AND LTRIM(
+          RTRIM(p.AccCode)
+        ) <> ''
+
+        AND p.HatchDate IS NOT NULL
+
+        AND DATEADD(
+          WEEK,
+          80,
+          p.HatchDate
+        )
+        BETWEEN ${fromDate} AND ${toDate}
+
       GROUP BY
         p.AccName,
         p.AccCode,
         a.phone,
-        FORMAT(DATEADD(WEEK, 75, p.HatchDate), 'yyyy-MM'),
-        CAST(DATEADD(WEEK, 75, p.HatchDate) AS DATE)
-      ORDER BY DueDate;
+
+        FORMAT(
+          DATEADD(WEEK, 80, p.HatchDate),
+          'yyyy-MM'
+        ),
+
+        CAST(
+          DATEADD(WEEK, 80, p.HatchDate)
+          AS DATE
+        )
+
+      ORDER BY
+        DueDate ASC;
     `;
-    console.log(result.recordset);
-    res.json(result.recordset);
+
+    res.status(200).json(result.recordset);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Due Report Error:", err);
+
+    res.status(500).json({
+      error: err.message,
+    });
   }
 };
 
@@ -395,19 +445,27 @@ exports.getSchedule = async (req, res) => {
     const { date } = req.params;
     const pool = await poolPromise;
 
-    const result = await pool.request().input("date", sql.Date, new Date(date))
-      .query(`
-        SELECT *
-        FROM ChickSchedule
-        WHERE CAST(ScheduleDate AS DATE) = @date
+    const result = await pool.request().input("date", sql.Date, date).query(`
+        SELECT
+          Id,
+          Cust_Code AS CustomerCode,
+          Cust_Name AS CustomerName,
+          Qty AS DemandQty,
+          Schedule_Date AS DemandDate,
+          Hatchery
+        FROM LayerChickSchedule
+        WHERE CAST(Schedule_Date AS DATE) = @date
+        ORDER BY Cust_Name
       `);
 
     res.json(result.recordset);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("GET SCHEDULE ERROR:", err);
+    res.status(500).json({
+      error: err.message,
+    });
   }
 };
-
 exports.getScheduleCustomer = async (req, res) => {
   try {
     const { date } = req.params;
@@ -454,23 +512,28 @@ exports.postSchedule = async (req, res) => {
 
 exports.getMonth = async (req, res) => {
   try {
-    const year = parseInt(req.params.year);
-    const month = parseInt(req.params.month);
+    const { year, month } = req.params;
+
     const pool = await poolPromise;
 
     const result = await pool
       .request()
-      .input("year", sql.Int, year)
-      .input("month", sql.Int, month).query(`
-        SELECT ISNULL(SUM(DemandQty),0) AS TotalQty
-        FROM ChickSchedule
-         WHERE DemandDate >= DATEFROMPARTS(@year, @month, 1)
-        AND DemandDate < DATEADD(MONTH, 1, DATEFROMPARTS(@year, @month, 1))
+      .input("year", sql.Int, Number(year))
+      .input("month", sql.Int, Number(month)).query(`
+        SELECT 
+          ISNULL(SUM(Qty), 0) AS TotalQty
+        FROM LayerChickSchedule
+        WHERE YEAR(Schedule_Date) = @year
+          AND MONTH(Schedule_Date) = @month
       `);
 
     res.json(result.recordset[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("GET MONTH TOTAL ERROR:", err);
+
+    res.status(500).json({
+      error: err.message,
+    });
   }
 };
 
@@ -721,5 +784,854 @@ exports.deleteLayerSchedule = async (req, res) => {
   } catch (err) {
     console.log(err);
     res.status(500).send("Error");
+  }
+};
+
+// ==========================================================
+// LAYER CHICKS - CUSTOMER SESSION WISE PURCHASE REPORT
+// ==========================================================
+exports.getLayerChicksSessionReport = async (req, res) => {
+  try {
+    const {
+      customerCode,
+      customerName,
+      sessions,
+      status,
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(limit) || 50, 10), 200);
+    const offset = (pageNumber - 1) * pageSize;
+
+    const pool = await poolPromise;
+    const request = pool.request();
+
+    // =========================================================
+    // FILTER PARAMETERS
+    // =========================================================
+
+    request.input(
+      "customerCode",
+      sql.VarChar,
+      customerCode ? customerCode.trim() : null,
+    );
+
+    request.input(
+      "customerName",
+      sql.VarChar,
+      customerName ? customerName.trim() : null,
+    );
+
+    request.input(
+      "status",
+      sql.VarChar,
+      status ? status.trim().toUpperCase() : null,
+    );
+
+    request.input("offset", sql.Int, offset);
+    request.input("limit", sql.Int, pageSize);
+
+    // =========================================================
+    // MULTIPLE SESSIONS
+    // =========================================================
+
+    let selectedSessions = [];
+
+    if (sessions) {
+      selectedSessions = sessions
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    let sessionCondition = "";
+
+    if (selectedSessions.length > 0) {
+      const sessionParams = selectedSessions.map((session, index) => {
+        const paramName = `session${index}`;
+
+        request.input(paramName, sql.VarChar, session);
+
+        return `@${paramName}`;
+      });
+
+      sessionCondition = `
+        AND Session IN (${sessionParams.join(",")})
+      `;
+    }
+
+    // =========================================================
+    // QUERY
+    // =========================================================
+
+    const query = `
+      SET NOCOUNT ON;
+
+      /* =====================================================
+         1. CUSTOMERS
+      ===================================================== */
+
+      ;WITH LayerCustomers AS
+      (
+          SELECT DISTINCT
+              AccCode,
+              AccName
+          FROM PrintData
+          WHERE ProductName = 'Layer Chicks'
+            AND Cmp_id = 'PHHA'
+            AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+            AND AccCode IS NOT NULL
+            AND LTRIM(RTRIM(AccCode)) <> ''
+            AND AccName IS NOT NULL
+            AND LTRIM(RTRIM(AccName)) <> ''
+      ),
+
+      /* =====================================================
+         2. SESSIONS
+      ===================================================== */
+
+      LayerSessions AS
+      (
+          SELECT DISTINCT
+              Session
+          FROM PrintData
+          WHERE ProductName = 'Layer Chicks'
+            AND Cmp_id = 'PHHA'
+            AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+            AND Session IS NOT NULL
+            AND LTRIM(RTRIM(Session)) <> ''
+      ),
+
+      /* =====================================================
+         3. ACTUAL SALES
+      ===================================================== */
+
+      LayerSales AS
+      (
+          SELECT
+              AccCode,
+              Session,
+
+              SUM(ISNULL(Qty, 0)) AS TotalQty,
+              SUM(ISNULL(Amount, 0)) AS TotalAmount,
+
+              MIN(BillDate) AS FirstPurchaseDate,
+              MAX(BillDate) AS LastPurchaseDate,
+
+              COUNT(DISTINCT BillNo) AS TotalBills
+
+          FROM PrintData
+
+          WHERE ProductName = 'Layer Chicks'
+            AND Cmp_id = 'PHHA'
+            AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+
+          GROUP BY
+              AccCode,
+              Session
+      )
+
+      /* =====================================================
+         4. CREATE TEMP REPORT
+      ===================================================== */
+
+      SELECT
+          C.AccCode AS CustomerCode,
+          C.AccName AS CustomerName,
+          S.Session,
+
+          ISNULL(L.TotalQty, 0) AS TotalQty,
+          ISNULL(L.TotalAmount, 0) AS TotalAmount,
+
+          L.FirstPurchaseDate,
+          L.LastPurchaseDate,
+
+          ISNULL(L.TotalBills, 0) AS TotalBills,
+
+          CASE
+              WHEN ISNULL(L.TotalQty, 0) > 0
+                  THEN 'PURCHASED'
+              ELSE 'NOT PURCHASED'
+          END AS PurchaseStatus
+
+      INTO #LayerReport
+
+      FROM LayerCustomers C
+
+      CROSS JOIN LayerSessions S
+
+      LEFT JOIN LayerSales L
+          ON L.AccCode = C.AccCode
+         AND L.Session = S.Session;
+
+
+      /* =====================================================
+         5. PAGINATED DATA
+      ===================================================== */
+
+      SELECT
+          CustomerCode,
+          CustomerName,
+          Session,
+          TotalQty,
+          TotalAmount,
+          FirstPurchaseDate,
+          LastPurchaseDate,
+          TotalBills,
+          PurchaseStatus
+
+      FROM #LayerReport
+
+      WHERE
+          (
+              @customerCode IS NULL
+              OR CustomerCode = @customerCode
+          )
+
+          AND
+          (
+              @customerName IS NULL
+              OR CustomerName LIKE '%' + @customerName + '%'
+          )
+
+          ${sessionCondition}
+
+          AND
+          (
+              @status IS NULL
+              OR PurchaseStatus = @status
+          )
+
+      ORDER BY
+          CustomerName ASC,
+          Session DESC
+
+      OFFSET @offset ROWS
+      FETCH NEXT @limit ROWS ONLY;
+
+
+      /* =====================================================
+         6. SUMMARY
+      ===================================================== */
+
+      SELECT
+          COUNT(*) AS TotalRecords,
+
+          SUM(
+              CASE
+                  WHEN PurchaseStatus = 'PURCHASED'
+                  THEN 1
+                  ELSE 0
+              END
+          ) AS PurchasedSessions,
+
+          SUM(
+              CASE
+                  WHEN PurchaseStatus = 'NOT PURCHASED'
+                  THEN 1
+                  ELSE 0
+              END
+          ) AS NotPurchasedSessions,
+
+          ISNULL(SUM(TotalQty), 0) AS TotalQty,
+
+          ISNULL(SUM(TotalAmount), 0) AS TotalAmount
+
+      FROM #LayerReport
+
+      WHERE
+          (
+              @customerCode IS NULL
+              OR CustomerCode = @customerCode
+          )
+
+          AND
+          (
+              @customerName IS NULL
+              OR CustomerName LIKE '%' + @customerName + '%'
+          )
+
+          ${sessionCondition}
+
+          AND
+          (
+              @status IS NULL
+              OR PurchaseStatus = @status
+          );
+
+
+      /* =====================================================
+         7. DROP TEMP TABLE
+      ===================================================== */
+
+      DROP TABLE #LayerReport;
+    `;
+
+    const result = await request.query(query);
+
+    // =========================================================
+    // RESULT SETS
+    // =========================================================
+
+    const data = result.recordsets?.[0] || [];
+
+    const totals = result.recordsets?.[1]?.[0] || {
+      TotalRecords: 0,
+      PurchasedSessions: 0,
+      NotPurchasedSessions: 0,
+      TotalQty: 0,
+      TotalAmount: 0,
+    };
+
+    const totalRecords = Number(totals.TotalRecords || 0);
+
+    // =========================================================
+    // RESPONSE
+    // =========================================================
+
+    return res.status(200).json({
+      success: true,
+
+      product: "Layer Chicks",
+
+      filters: {
+        customerCode: customerCode || null,
+        customerName: customerName || null,
+        sessions: selectedSessions,
+        status: status || null,
+      },
+
+      pagination: {
+        page: pageNumber,
+        limit: pageSize,
+        totalRecords,
+        totalPages: totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 0,
+      },
+
+      summary: {
+        totalRecords,
+
+        purchasedSessions: Number(totals.PurchasedSessions || 0),
+
+        notPurchasedSessions: Number(totals.NotPurchasedSessions || 0),
+
+        totalQty: Number(totals.TotalQty || 0),
+
+        totalAmount: Number(totals.TotalAmount || 0),
+      },
+
+      data,
+    });
+  } catch (error) {
+    console.error("GET LAYER CHICKS SESSION REPORT ERROR ===>", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching Layer Chicks session report",
+      error: error.message,
+    });
+  }
+};
+// ==========================================================
+// GET LAYER CHICKS CUSTOMERS
+// Searchable + Alphabetical
+// ==========================================================
+// ==========================================================
+// GET LAYER CHICKS CUSTOMERS
+// ==========================================================
+exports.getLayerChicksCustomers = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    const pool = await poolPromise;
+    const request = pool.request();
+
+    request.input(
+      "search",
+      sql.VarChar,
+      search && search.trim() ? search.trim() : null,
+    );
+
+    const result = await request.query(`
+      SELECT DISTINCT
+          LTRIM(RTRIM(AccCode)) AS CustomerCode,
+          LTRIM(RTRIM(AccName)) AS CustomerName
+
+      FROM PrintData
+
+      WHERE ProductName COLLATE SQL_Latin1_General_CP1_CI_AS = 'Layer Chicks'
+        AND Cmp_id COLLATE SQL_Latin1_General_CP1_CI_AS = 'PHHA'
+        AND ISNULL(Vou_type, '') COLLATE SQL_Latin1_General_CP1_CI_AS 
+            <> 'PURCHASE(GST)'
+
+        AND AccCode IS NOT NULL
+        AND LTRIM(RTRIM(AccCode)) <> ''
+
+        AND AccName IS NOT NULL
+        AND LTRIM(RTRIM(AccName)) <> ''
+
+        AND (
+          @search IS NULL
+
+          OR LTRIM(RTRIM(AccName))
+             COLLATE SQL_Latin1_General_CP1_CI_AS
+             LIKE '%' + @search + '%'
+
+          OR LTRIM(RTRIM(AccCode))
+             COLLATE SQL_Latin1_General_CP1_CI_AS
+             LIKE '%' + @search + '%'
+        )
+
+      ORDER BY CustomerName ASC;
+    `);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (error) {
+    console.error("LAYER CHICKS CUSTOMER ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching Layer Chicks customers",
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================================
+// GET LAYER CHICKS SESSIONS
+// ==========================================================
+exports.getLayerChicksSessions = async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request().query(`
+      SELECT DISTINCT
+          Session
+
+      FROM PrintData
+
+      WHERE ProductName = 'Layer Chicks'
+        AND Cmp_id = 'PHHA'
+        AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+
+        AND Session IS NOT NULL
+        AND LTRIM(RTRIM(Session)) <> ''
+
+      ORDER BY Session DESC;
+    `);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (error) {
+    console.error("SESSION ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching sessions",
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================================
+// GET LAYER CHICKS SESSIONS
+// ==========================================================
+exports.getLayerChicksSessionDetails = async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const { customerName = "", customerCode = "", session = "" } = req.query;
+
+    // =====================================================
+    // VALIDATION
+    // =====================================================
+
+    if (!customerName || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "customerName and session are required",
+      });
+    }
+
+    const cleanCustomerName = String(customerName).trim();
+    const cleanCustomerCode = String(customerCode || "").trim();
+    const cleanSession = String(session).trim();
+
+    // =====================================================
+    // REQUEST INPUTS
+    // =====================================================
+
+    const request = pool.request();
+
+    request.input("CustomerName", sql.VarChar(300), cleanCustomerName);
+
+    request.input("CustomerCode", sql.VarChar(100), cleanCustomerCode);
+
+    request.input("Session", sql.VarChar(50), cleanSession);
+
+    // =====================================================
+    // DETAIL QUERY
+    //
+    // IMPORTANT:
+    // Same date + different Hatchery = DIFFERENT ROW
+    //
+    // Example:
+    //
+    // 04-Apr-2026 | RAIPUR UNIT  | 3,461
+    // 04-Apr-2026 | PARIYAT UNIT | 9,994
+    //
+    // Dono alag-alag rows rahengi.
+    // =====================================================
+
+    const result = await request.query(`
+  WITH CustomerData AS
+  (
+      SELECT
+          AccCode AS CustomerCode,
+
+          LTRIM(
+              RTRIM(
+                  AccName
+              )
+          ) AS CustomerName,
+
+          Session,
+
+          CAST(
+              HatchDate AS DATE
+          ) AS HatchDate,
+
+          CAST(
+              BillDate AS DATE
+          ) AS BillDate,
+
+          BillNo,
+
+          ISNULL(
+              NULLIF(
+                  LTRIM(
+                      RTRIM(
+                          PrdUnit
+                      )
+                  ),
+                  ''
+              ),
+              'Unknown'
+          ) AS Hatchery,
+
+          Station,
+
+          ISNULL(Qty, 0) AS Qty,
+
+          ISNULL(FreeQty, 0) AS FreeQty,
+
+          ISNULL(Mortality, 0) AS Mortality,
+
+          ISNULL(Rate, 0) AS Rate,
+
+          ISNULL(Amount, 0) AS Amount,
+
+          Vou_type,
+
+          Vou_no
+
+      FROM PrintData
+
+      WHERE
+          UPPER(
+              LTRIM(
+                  RTRIM(
+                      ISNULL(
+                          ProductName,
+                          ''
+                      )
+                  )
+              )
+          ) = 'LAYER CHICKS'
+
+          AND Cmp_id = 'PHHA'
+
+          AND UPPER(
+              LTRIM(
+                  RTRIM(
+                      ISNULL(
+                          Vou_type,
+                          ''
+                      )
+                  )
+              )
+          ) <> 'PURCHASE(GST)'
+
+          AND Session = @Session
+
+          AND UPPER(
+              LTRIM(
+                  RTRIM(
+                      ISNULL(
+                          AccName,
+                          ''
+                      )
+                  )
+              )
+          ) =
+          UPPER(
+              LTRIM(
+                  RTRIM(
+                      @CustomerName
+                  )
+              )
+          )
+
+          AND
+          (
+              @CustomerCode = ''
+              OR AccCode = @CustomerCode
+          )
+  ),
+
+  DetailData AS
+  (
+      SELECT
+          CustomerCode,
+
+          MAX(
+              CustomerName
+          ) AS CustomerName,
+
+          Session,
+
+          HatchDate,
+
+          CAST(
+              DATEADD(
+                  WEEK,
+                  80,
+                  HatchDate
+              )
+              AS DATE
+          ) AS DueDate,
+
+          Hatchery,
+
+          MAX(
+              BillDate
+          ) AS BillDate,
+
+          MAX(
+              BillNo
+          ) AS BillNo,
+
+          SUM(
+              Qty
+          ) AS Qty,
+
+          SUM(
+              FreeQty
+          ) AS FreeQty,
+
+          SUM(
+              Mortality
+          ) AS Mortality,
+
+          MAX(
+              Rate
+          ) AS Rate,
+
+          SUM(
+              Amount
+          ) AS Amount,
+
+          MAX(
+              Station
+          ) AS Station,
+
+          MAX(
+              Vou_type
+          ) AS VouType,
+
+          MAX(
+              Vou_no
+          ) AS VouNo
+
+      FROM CustomerData
+
+      GROUP BY
+          CustomerCode,
+          Session,
+          HatchDate,
+          Hatchery
+  )
+
+  SELECT
+      CustomerCode,
+      CustomerName,
+      Session,
+      HatchDate,
+      DueDate,
+      Hatchery,
+      BillDate,
+      BillNo,
+      Qty,
+      FreeQty,
+      Mortality,
+      Rate,
+      Amount,
+      Station,
+      VouType,
+      VouNo
+
+  FROM DetailData
+
+  ORDER BY
+      HatchDate ASC,
+      Hatchery ASC,
+      CustomerCode ASC;
+`);
+
+    const rows = result.recordset || [];
+
+    // =====================================================
+    // TOTALS
+    // =====================================================
+
+    const totals = rows.reduce(
+      (acc, item) => {
+        acc.totalQty += Number(item.Qty || 0);
+
+        acc.totalFreeQty += Number(item.FreeQty || 0);
+
+        acc.totalMortality += Number(item.Mortality || 0);
+
+        acc.totalAmount += Number(item.Amount || 0);
+
+        return acc;
+      },
+      {
+        totalQty: 0,
+        totalFreeQty: 0,
+        totalMortality: 0,
+        totalAmount: 0,
+      },
+    );
+
+    // =====================================================
+    // UNIQUE PURCHASE DATES
+    //
+    // Same date par 2 hatcheries = 1 purchase date,
+    // but 2 purchase entries.
+    // =====================================================
+
+    const uniquePurchaseDates = [
+      ...new Set(
+        rows
+          .filter((item) => item.HatchDate)
+          .map((item) => {
+            const d = new Date(item.HatchDate);
+
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+              2,
+              "0",
+            )}-${String(d.getDate()).padStart(2, "0")}`;
+          }),
+      ),
+    ];
+
+    // =====================================================
+    // FIRST / LAST PURCHASE DATE
+    // =====================================================
+
+    const firstPurchaseDate = rows.length > 0 ? rows[0].HatchDate : null;
+
+    const lastPurchaseDate =
+      rows.length > 0 ? rows[rows.length - 1].HatchDate : null;
+
+    // =====================================================
+    // RESPONSE
+    // =====================================================
+
+    return res.status(200).json({
+      success: true,
+
+      customer: {
+        customerName: cleanCustomerName,
+
+        customerCode: cleanCustomerCode || null,
+
+        session: cleanSession,
+      },
+
+      summary: {
+        // Unique calendar dates
+        totalPurchaseDates: uniquePurchaseDates.length,
+
+        // Actual rows after Hatchery separation
+        totalPurchaseEntries: rows.length,
+
+        totalQty: totals.totalQty,
+
+        totalFreeQty: totals.totalFreeQty,
+
+        totalMortality: totals.totalMortality,
+
+        totalAmount: totals.totalAmount,
+
+        firstPurchaseDate,
+
+        lastPurchaseDate,
+      },
+
+      data: rows.map((item, index) => ({
+        id: index + 1,
+
+        customerCode: item.CustomerCode,
+
+        customerName: item.CustomerName,
+
+        session: item.Session,
+
+        hatchDate: item.HatchDate,
+
+        dueDate: item.DueDate, // ✅ VERY IMPORTANT
+
+        hatchery: item.Hatchery,
+
+        billDate: item.BillDate,
+
+        billNo: item.BillNo,
+
+        qty: Number(item.Qty || 0),
+
+        freeQty: Number(item.FreeQty || 0),
+
+        mortality: Number(item.Mortality || 0),
+
+        rate: Number(item.Rate || 0),
+
+        amount: Number(item.Amount || 0),
+
+        station: item.Station,
+
+        vouType: item.VouType,
+
+        vouNo: item.VouNo,
+      })),
+    });
+  } catch (error) {
+    console.error("LAYER CHICKS SESSION DETAILS ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+
+      message: "Unable to fetch customer session details",
+
+      error: error.message,
+    });
   }
 };

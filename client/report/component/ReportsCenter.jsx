@@ -28,7 +28,7 @@ import {
 import AdminSideBar from "./AdminSideBar";
 import styles from "./ReportsCenter.module.css";
 
-const API_BASE = "http://localhost:5007/api";
+const API_BASE = "http://137.97.174.50:5007/api";
 
 const ReportsCenter = () => {
   const [activeTab, setActiveTab] = useState("Reports");
@@ -641,7 +641,7 @@ const ReportsCenter = () => {
       id: `generated-${Date.now()}`,
       name: `${reportType} - ${formatDateTime()}`,
       category,
-      user: "MD User",
+      user: "User",
       date: new Date().toISOString(),
       format: reportFormat,
       status: "Completed",

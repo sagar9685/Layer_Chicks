@@ -35,6 +35,11 @@ const AdminSideBar = ({
       path: "/farmeer",
     },
     {
+      name: "Layer Sale History",
+      icon: Users,
+      path: "/layer",
+    },
+    {
       name: "Placement",
       icon: Repeat,
       path: "/placement",
@@ -48,11 +53,6 @@ const AdminSideBar = ({
       name: "Calendar",
       icon: CalendarDays,
       path: "/calenders",
-    },
-    {
-      name: "Reports",
-      icon: ClipboardCheck,
-      path: "/report",
     },
   ];
 

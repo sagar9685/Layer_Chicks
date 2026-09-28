@@ -1190,3 +1190,339 @@
     font-size: 14px;
   }
 }
+/* =========================================================
+   MANAGEMENT DASHBOARD
+========================================================= */
+
+.managementStrip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px 22px;
+  background: #111827;
+  border-radius: 14px;
+}
+
+.managementStrip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.managementLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.managementStrip strong {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* =========================================================
+   KPI CARDS
+========================================================= */
+
+.kpiDangerCard {
+  border-left: 4px solid #dc2626;
+}
+
+.kpiHighlightCard {
+  border-left: 4px solid #16a34a;
+}
+
+.kpiCard {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.kpiCard:hover {
+  transform: translateY(-2px);
+}
+
+/* =========================================================
+   MANAGEMENT GRID
+========================================================= */
+
+.managementGrid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.managementSummaryCard {
+  height: 100%;
+}
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+.actionSummary {
+  margin-top: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px;
+  border-radius: 10px;
+  background: #f9fafb;
+}
+
+.actionSummary > svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  font-size: 20px;
+}
+
+.actionSummary strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #111827;
+}
+
+.actionSummary p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+/* =========================================================
+   MONTHLY
+========================================================= */
+
+.barValueGroup {
+  min-width: 105px;
+  text-align: right;
+}
+
+.barValueGroup strong {
+  display: block;
+  font-size: 13px;
+}
+
+.barValueGroup small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+/* =========================================================
+   AREA MANAGEMENT TABLE
+========================================================= */
+
+.areaManagementTable {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.shareCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 160px;
+}
+
+.shareCell .barTrack {
+  flex: 1;
+}
+
+.shareCell > span {
+  min-width: 45px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* =========================================================
+   HATCHERY
+========================================================= */
+
+.hatcheryList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hatcheryItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 14px 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.hatcheryItem > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hatcheryItem > div strong {
+  font-size: 13px;
+  color: #111827;
+}
+
+.hatcheryItem > div span {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.hatcheryItem > strong {
+  font-size: 14px;
+  color: #111827;
+}
+
+/* =========================================================
+   CALENDAR
+========================================================= */
+
+.calendarEvent {
+  padding: 6px;
+  margin-top: 5px;
+  border-radius: 5px;
+  background: #fef3c7;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.calendarEvent strong {
+  display: block;
+  font-size: 9px;
+}
+
+.calendarEvent span {
+  color: #92400e;
+}
+
+.noEvent {
+  display: block;
+  text-align: center;
+  margin-top: 12px;
+  color: #d1d5db;
+}
+
+/* =========================================================
+   CUSTOMER CELL
+========================================================= */
+
+.customerCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.customerCell strong {
+  font-size: 12px;
+  color: #111827;
+}
+
+.customerCell small {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+/* =========================================================
+   STATUS BADGES
+========================================================= */
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.statusOverdue {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.statusToday {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.statusDueSoon {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.statusPlanning {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.statusUpcoming {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.statusFuture {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+/* =========================================================
+   TABLE TITLE
+========================================================= */
+
+.tableTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.tableTitleGroup > div h2 {
+  margin-bottom: 3px;
+}
+
+.tableTitleGroup > div p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 1200px) {
+  .managementGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .managementStrip {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .managementStrip {
+    grid-template-columns: 1fr;
+  }
+
+  .managementGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .shareCell {
+    min-width: 130px;
+  }
+}

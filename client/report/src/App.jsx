@@ -12,6 +12,7 @@ import ReportsCenter from "../component/ReportsCenter";
 import Login from "../pages/Login";
 
 import ProtectedRoute from "../component/ProtectedRoute";
+import LayerChicksSessionReport from "../component/LayerChicksSessionReport";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route path="/placement" element={<PlacementDashboard />} />
           <Route path="/replacement" element={<ReplacementForecast />} />
           <Route path="/report" element={<ReportsCenter />} />
+          <Route path="/layer" element={<LayerChicksSessionReport />} />
         </Route>
         <Route path="/" element={<Login />} />
       </Routes>

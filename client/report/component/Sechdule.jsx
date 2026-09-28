@@ -363,8 +363,6 @@ const Sechdule = () => {
     const year = dt.getFullYear();
     const month = dt.getMonth() + 1;
 
-    console.log("API CALL MONTH:", year, month); // 👈 check this
-
     try {
       const res = await axios.get(
         `http://137.97.174.50:5007/api/month-total/${year}/${month}`,
@@ -815,7 +813,7 @@ const Sechdule = () => {
               <div className="original-customer-table mb-4">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <h6 className="fw-bold text-dark mb-0">
-                    📋 Tentative customer as 75 weeks
+                    📋 Tentative customer as 80 weeks
                   </h6>
 
                   <div className="d-flex align-items-center gap-2">

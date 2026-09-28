@@ -1,112 +1,262 @@
-// ============================================================
-// ReplacementForecast.jsx (FULLY ENHANCED)
-// ============================================================
-
 import React, { useEffect, useMemo, useState } from "react";
+
 import axios from "axios";
+
 import {
   FiSearch,
   FiDownload,
-  FiBell,
-  FiFilter,
   FiRotateCcw,
   FiCalendar,
   FiTrendingUp,
   FiAlertTriangle,
-  FiUsers,
   FiEye,
-  FiMoreVertical,
-  FiZap,
-  FiChevronRight,
-  FiPieChart,
-  FiBarChart2,
   FiClock,
-  FiUser,
   FiMapPin,
-  FiHome,
-  FiActivity,
+  FiCheckCircle,
+  FiTarget,
+  FiPackage,
 } from "react-icons/fi";
+
 import AdminSideBar from "./AdminSideBar";
+
 import styles from "./ReplacementForecast.module.css";
 
-const API_URL = "http://localhost:5007/api/replacement-forecast";
+const API_URL = "http://137.97.174.50:5007/api/replacement-forecast";
+
+// ============================================================
+
+// DATE HELPERS
+
+// ============================================================
+
+const getDateInputValue = (date) => {
+  const year = date.getFullYear();
+
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (date, days) => {
+  const result = new Date(date);
+
+  result.setDate(result.getDate() + days);
+
+  return result;
+};
 
 export default function ReplacementForecast() {
   const [activeTab, setActiveTab] = useState("replacement");
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  const [forecastPeriod, setForecastPeriod] = useState("7days");
+  // ============================================================
+
+  // DEFAULT REPLACEMENT RANGE
+
+  // By default only today's replacement is shown.
+  // User can switch to next 7 / 30 / 90 days or a custom range.
+
+  // ============================================================
+
+  const today = useMemo(() => new Date(), []);
+
+  const todayValue = useMemo(
+    () => getDateInputValue(today),
+
+    [today],
+  );
+
+  // ============================================================
+
+  // FILTER STATES
+
+  // ============================================================
+
+  const [rangeType, setRangeType] = useState("today");
+
+  const [fromDate, setFromDate] = useState(todayValue);
+
+  const [toDate, setToDate] = useState(todayValue);
 
   const [search, setSearch] = useState("");
+
   const [area, setArea] = useState("");
+
   const [farmer, setFarmer] = useState("");
+
   const [hatchery, setHatchery] = useState("");
 
+  // ============================================================
+
+  // DATA
+
+  // ============================================================
+
   const [data, setData] = useState({
-    kpis: {
-      farmersDue: 0,
-      expectedBirds: 0,
-      expectedChickRequirement: 0,
-      averageBirdsPerFarmer: 0,
-      criticalReplacements: 0,
-      overdueReplacements: 0,
+    replacementWeeks: 80,
+
+    calculationRule: "Latest HatchDate + 80 Weeks",
+
+    forecastRange: {
+      from: todayValue,
+
+      to: todayValue,
     },
+
+    kpis: {
+      totalFarmers: 0,
+
+      expectedBirds: 0,
+
+      overdue: 0,
+
+      dueToday: 0,
+
+      next7Days: 0,
+
+      next30Days: 0,
+
+      next90Days: 0,
+
+      future: 0,
+    },
+
     charts: {
       monthlyForecast: [],
+
       hatcheryDemand: [],
+
       areaForecast: [],
-      weeklyCalendar: [],
+
+      replacementCalendar: [],
     },
+
     replacements: [],
+
     forecastSummary: {
       totalFarmers: 0,
+
       totalExpectedBirds: 0,
-      totalChicksRequired: 0,
+
+      overdue: 0,
+
+      dueToday: 0,
+
+      next7Days: 0,
+
+      next30Days: 0,
+
+      next90Days: 0,
+
+      future: 0,
     },
+
     pagination: {
       totalRecords: 0,
+
       currentPage: 1,
+
       rowsPerPage: 10,
+
       totalPages: 0,
     },
   });
 
+  // ============================================================
+
+  // FINANCIAL YEAR
+
+  // ============================================================
+
+  const getFinancialSession = () => {
+    const todayDate = new Date();
+
+    let startYear = todayDate.getFullYear();
+
+    if (todayDate.getMonth() < 3) {
+      startYear -= 1;
+    }
+
+    return startYear;
+  };
+
+  const generateSessions = () => {
+    const currentYear = getFinancialSession();
+
+    const list = [];
+
+    for (let year = currentYear; year >= 2017; year--) {
+      list.push({
+        value: `${String(year).slice(2)}${String(year + 1).slice(2)}`,
+
+        label: `${String(year).slice(2)}-${String(year + 1).slice(2)}`,
+      });
+    }
+
+    return list;
+  };
+
+  const sessions = useMemo(() => generateSessions(), []);
+
+  const [session, setSession] = useState(sessions[0]?.value || "");
+
+  // ============================================================
+
+  // OTHER STATE
+
+  // ============================================================
+
   const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState("");
 
   const [page, setPage] = useState(1);
-  const limit = 10;
 
-  const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
+  const limit = 25;
 
-  // ============================================================
-  // PERIOD VALUE
-  // ============================================================
-
-  const periodValue = useMemo(() => {
-    if (forecastPeriod === "7days") return "7";
-    if (forecastPeriod === "30days") return "30";
-    if (forecastPeriod === "90days") return "90";
-    return "30";
-  }, [forecastPeriod]);
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => !prev);
+  };
 
   // ============================================================
+
   // FETCH API
+
   // ============================================================
 
   const fetchForecast = async () => {
+    if (fromDate && toDate && fromDate > toDate) {
+      setError("From date cannot be greater than To date");
+
+      return;
+    }
+
     try {
       setLoading(true);
+
       setError("");
 
       const response = await axios.get(API_URL, {
         params: {
-          period: periodValue,
           search: search.trim(),
+
           area,
+
           farmer,
+
           hatchery,
+
+          fromDate,
+
+          toDate,
+
+          session,
+
           page,
+
           limit,
         },
       });
@@ -116,6 +266,7 @@ export default function ReplacementForecast() {
       }
     } catch (err) {
       console.error("Replacement Forecast API Error:", err);
+
       setError(
         err.response?.data?.message ||
           "Failed to load replacement forecast data",
@@ -126,119 +277,338 @@ export default function ReplacementForecast() {
   };
 
   // ============================================================
-  // API CALL WHEN FILTERS CHANGE
+
+  // FILTER EFFECT
+
   // ============================================================
 
   useEffect(() => {
     fetchForecast();
-  }, [forecastPeriod, area, farmer, hatchery, page]);
+  }, [fromDate, toDate, area, farmer, hatchery, session, page]);
 
   // ============================================================
+
   // SEARCH DEBOUNCE
+
   // ============================================================
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1);
+
       fetchForecast();
     }, 500);
+
     return () => clearTimeout(timer);
   }, [search]);
 
   // ============================================================
-  // FORMAT NUMBER
+
+  // HELPERS
+
   // ============================================================
 
   const formatNumber = (number) => {
     return Number(number || 0).toLocaleString("en-IN");
   };
 
-  // ============================================================
-  // FORMAT DATE
-  // ============================================================
-
   const formatDate = (date) => {
     if (!date) return "-";
+
     return new Date(date).toLocaleDateString("en-IN", {
       day: "2-digit",
+
       month: "short",
+
       year: "numeric",
     });
   };
 
   // ============================================================
-  // RESET FILTERS
+
+  // RESET
+
   // ============================================================
 
-  const handleReset = () => {
-    setSearch("");
-    setArea("");
-    setFarmer("");
-    setHatchery("");
-    setForecastPeriod("7days");
+  const applyRange = (type) => {
+    const base = new Date();
+
+    const baseValue = getDateInputValue(base);
+
+    setRangeType(type);
+
+    if (type === "today") {
+      setFromDate(baseValue);
+
+      setToDate(baseValue);
+    } else if (type === "next7") {
+      setFromDate(baseValue);
+
+      setToDate(getDateInputValue(addDays(base, 7)));
+    } else if (type === "next30") {
+      setFromDate(baseValue);
+
+      setToDate(getDateInputValue(addDays(base, 30)));
+    } else if (type === "next90") {
+      setFromDate(baseValue);
+
+      setToDate(getDateInputValue(addDays(base, 90)));
+    }
+
     setPage(1);
   };
 
-  // ============================================================
-  // DATA
+  const handleReset = () => {
+    setSearch("");
+
+    setArea("");
+
+    setFarmer("");
+
+    setHatchery("");
+
+    setSession(sessions[0]?.value || "");
+
+    applyRange("today");
+  };
+
   // ============================================================
 
-  const { kpis, charts, replacements, forecastSummary, pagination } = data;
+  // API DATA
 
   // ============================================================
-  // MAX VALUES FOR BAR CHART
+
+  const {
+    kpis = {},
+
+    charts = {},
+
+    replacements = [],
+
+    forecastSummary = {},
+
+    pagination = {},
+  } = data;
+
   // ============================================================
+
+  // AREA ANALYSIS
+
+  // ============================================================
+
+  const areaAnalysis = useMemo(() => {
+    return (charts.areaForecast || [])
+
+      .map((item) => {
+        const farmers = Number(item.Farmers || 0);
+
+        const birds = Number(item.Birds || 0);
+
+        return {
+          ...item,
+
+          Farmers: farmers,
+
+          Birds: birds,
+
+          averageBirds: farmers > 0 ? Math.round(birds / farmers) : 0,
+        };
+      })
+
+      .sort((a, b) => b.Birds - a.Birds);
+  }, [charts.areaForecast]);
 
   const maxAreaBirds = Math.max(
-    ...(charts.areaForecast || []).map((item) => Number(item.Birds || 0)),
+    ...areaAnalysis.map((item) => Number(item.Birds || 0)),
+
     1,
   );
 
   const maxMonthlyBirds = Math.max(
     ...(charts.monthlyForecast || []).map((item) => Number(item.Birds || 0)),
+
     1,
   );
 
   // ============================================================
-  // WEEKLY CALENDAR DAYS
+
+  // MANAGEMENT INSIGHTS
+
   // ============================================================
 
-  const getWeekDays = () => {
-    const days = [];
-    const today = new Date();
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      days.push(date);
+  const highestDemandArea = areaAnalysis.length > 0 ? areaAnalysis[0] : null;
+
+  const peakMonth =
+    (charts.monthlyForecast || []).length > 0
+      ? charts.monthlyForecast.reduce(
+          (max, item) =>
+            Number(item.Birds || 0) > Number(max.Birds || 0) ? item : max,
+
+          charts.monthlyForecast[0],
+        )
+      : null;
+
+  const immediateActionCount =
+    Number(kpis.dueToday || 0) + Number(kpis.next7Days || 0);
+
+  // ============================================================
+
+  // STATUS CLASS
+
+  // ============================================================
+
+  const getStatusClass = (status) => {
+    switch (status) {
+      case "Overdue":
+        return styles.statusOverdue;
+
+      case "Past Due":
+        return styles.statusOverdue;
+
+      case "Due Today":
+        return styles.statusToday;
+
+      case "Next 7 Days":
+        return styles.statusDueSoon;
+
+      case "Next 30 Days":
+        return styles.statusPlanning;
+
+      case "Next 90 Days":
+        return styles.statusUpcoming;
+
+      default:
+        return styles.statusFuture;
     }
-    return days;
   };
 
-  const weekDays = getWeekDays();
+  const getDaysText = (row) => {
+    if (row.status === "Overdue" || row.status === "Past Due") {
+      return `${formatNumber(row.overdueDays)} days overdue`;
+    }
 
-  const getEventsForDate = (date) => {
-    return (charts.weeklyCalendar || []).filter((event) => {
-      const eventDate = new Date(event.date);
-      return (
-        eventDate.getFullYear() === date.getFullYear() &&
-        eventDate.getMonth() === date.getMonth() &&
-        eventDate.getDate() === date.getDate()
-      );
-    });
+    if (row.status === "Due Today") {
+      return "Today";
+    }
+
+    return `${formatNumber(row.daysLeft)} days`;
   };
 
   // ============================================================
-  // GET PRIORITY CLASS
+
+  // EXPORT
+
   // ============================================================
 
-  const getPriorityClass = (priority) => {
-    if (!priority) return "";
-    const p = priority.toLowerCase();
-    if (p === "high") return styles.priorityHigh;
-    if (p === "medium") return styles.priorityMedium;
-    if (p === "low") return styles.priorityLow;
-    return "";
+  const handleExport = async () => {
+    try {
+      const response = await axios.get(API_URL, {
+        params: {
+          search: search.trim(),
+
+          area,
+
+          farmer,
+
+          hatchery,
+
+          fromDate,
+
+          toDate,
+
+          session,
+
+          page: 1,
+
+          limit: 5000,
+        },
+      });
+
+      const rows = response.data?.replacements || [];
+
+      if (!rows.length) {
+        alert("No data available to export");
+
+        return;
+      }
+
+      const headers = [
+        "Farmer",
+
+        "Customer Code",
+
+        "Area",
+
+        "Hatchery",
+
+        "Last Placement",
+
+        "Replacement Date",
+
+        "Bird Requirement",
+
+        "Timeline",
+
+        "Status",
+      ];
+
+      const csvRows = rows.map((row) => [
+        row.farmer,
+
+        row.code,
+
+        row.area,
+
+        row.hatchery,
+
+        formatDate(row.lastPlacement),
+
+        formatDate(row.expectedDate),
+
+        row.requirement,
+
+        getDaysText(row),
+
+        row.status,
+      ]);
+
+      const csv = [headers, ...csvRows]
+
+        .map((row) =>
+          row
+
+            .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
+
+            .join(","),
+        )
+
+        .join("\n");
+
+      const blob = new Blob([csv], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+
+      link.href = url;
+
+      link.download = `replacement-${fromDate}-to-${toDate}.csv`;
+
+      link.click();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Export Error:", error);
+    }
   };
+
+  // ============================================================
+
+  // RENDER
+
+  // ============================================================
 
   return (
     <div className={styles.layoutContainer}>
@@ -255,92 +625,118 @@ export default function ReplacementForecast() {
         }`}
       >
         {/* HEADER */}
+
         <header className={styles.header}>
           <div className={styles.headerTitle}>
             <h1>
-              <FiTrendingUp className={styles.titleIcon} /> Replacement Forecast
+              <FiTrendingUp className={styles.titleIcon} />
+              Replacement Planning Dashboard
             </h1>
+
             <p>
-              Plan ahead for seamless flock replacement and chick production
+              Customer replacement forecast for every flock based on hatch date
+              + 80 weeks
             </p>
           </div>
 
           <div className={styles.headerActions}>
             <div className={styles.searchBar}>
               <FiSearch className={styles.searchIcon} />
+
               <input
                 type="text"
-                placeholder="Search farmer, code, area, hatchery..."
+                placeholder="Search farmer, code, area or hatchery..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <span className={styles.shortcutKey}>⌘K</span>
             </div>
 
-            <button className={styles.btnOutline}>
-              <FiDownload /> Export
+            <button className={styles.btnOutline} onClick={handleExport}>
+              <FiDownload />
+              Export
             </button>
           </div>
         </header>
 
-        {/* FILTER TOOLBAR */}
+        {/* ===============================================
+
+            REPLACEMENT RANGE FILTER
+
+        =============================================== */}
+
         <div className={styles.filterToolbar}>
-          <div className={styles.periodTabs}>
-            {[
-              { label: "Next 7 Days", key: "7days" },
-              { label: "Next 30 Days", key: "30days" },
-              { label: "Next 90 Days", key: "90days" },
-            ].map((period) => (
-              <button
-                key={period.key}
-                className={`${styles.tabBtn} ${
-                  forecastPeriod === period.key ? styles.tabBtnActive : ""
-                }`}
-                onClick={() => {
-                  setForecastPeriod(period.key);
+          <div className={styles.dropdownGroup}>
+            <div>
+              <label>Replacement Range</label>
+
+              <select
+                className={styles.selectInput}
+                value={rangeType}
+                onChange={(e) => applyRange(e.target.value)}
+              >
+                <option value="today">Today</option>
+
+                <option value="next7">Next 7 Days</option>
+
+                <option value="next30">Next 30 Days</option>
+
+                <option value="next90">Next 90 Days</option>
+
+                <option value="custom">Custom / Previous Dates</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Replacement From</label>
+
+              <input
+                type="date"
+                className={styles.selectInput}
+                value={fromDate}
+                onChange={(e) => {
+                  setRangeType("custom");
+                  setFromDate(e.target.value);
                   setPage(1);
                 }}
-              >
-                {period.label}
-              </button>
-            ))}
-          </div>
+              />
+            </div>
 
-          <div className={styles.dropdownGroup}>
+            <div>
+              <label>Replacement To</label>
+
+              <input
+                type="date"
+                className={styles.selectInput}
+                value={toDate}
+                min={fromDate}
+                onChange={(e) => {
+                  setRangeType("custom");
+                  setToDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
             <select
               className={styles.selectInput}
               value={area}
               onChange={(e) => {
                 setArea(e.target.value);
+
                 setPage(1);
               }}
             >
               <option value="">All Areas</option>
-              {[
-                ...new Set(
-                  (charts.areaForecast || []).map((item) => item.Area),
-                ),
-              ].map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
 
-            <select
-              className={styles.selectInput}
-              value={farmer}
-              onChange={(e) => {
-                setFarmer(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All Farmers</option>
-              {replacements.map((item) => (
-                <option key={item.code} value={item.farmer}>
-                  {item.farmer}
-                </option>
-              ))}
+              {[...new Set(areaAnalysis.map((item) => item.Area))]
+
+                .filter(Boolean)
+
+                .map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
             </select>
 
             <select
@@ -348,543 +744,473 @@ export default function ReplacementForecast() {
               value={hatchery}
               onChange={(e) => {
                 setHatchery(e.target.value);
+
                 setPage(1);
               }}
             >
               <option value="">All Hatcheries</option>
+
               {[
                 ...new Set(
                   (charts.hatcheryDemand || []).map((item) => item.Hatchery),
                 ),
-              ].map((item) => (
-                <option key={item} value={item}>
-                  {item}
+              ]
+
+                .filter(Boolean)
+
+                .map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+            </select>
+
+            <select
+              className={styles.selectInput}
+              value={session}
+              onChange={(e) => {
+                setSession(e.target.value);
+
+                setPage(1);
+              }}
+            >
+              {sessions.map((item) => (
+                <option key={item.value} value={item.value}>
+                  FY {item.label}
                 </option>
               ))}
             </select>
 
-            <button className={styles.btnFilter}>
-              <FiFilter /> Filters
-            </button>
-
             <button className={styles.btnReset} onClick={handleReset}>
-              <FiRotateCcw /> Reset
+              <FiRotateCcw />
+              Reset
             </button>
           </div>
         </div>
 
-        {/* ERROR */}
         {error && <div className={styles.errorMessage}>{error}</div>}
 
-        {/* KPI CARDS */}
-        <div className={styles.kpiGrid}>
-          <div className={styles.kpiCard}>
-            <div className={`${styles.kpiIconBox} ${styles.purpleBg}`}>
-              <FiUsers />
-            </div>
-            <div className={styles.kpiDetails}>
-              <span className={styles.kpiLabel}>
-                Farmers Due for Replacement
-              </span>
-              <h3 className={styles.kpiValue}>
-                {formatNumber(kpis.farmersDue)}
-              </h3>
-              <span className={`${styles.kpiTrend} ${styles.trendUp}`}>
-                <FiTrendingUp /> Current Forecast
-              </span>
-            </div>
+        {/* ACTIVE RANGE */}
+
+        <div className={styles.managementStrip}>
+          <div>
+            <span className={styles.managementLabel}>Replacement Range</span>
+
+            <strong>
+              {formatDate(fromDate)}
+
+              {" → "}
+
+              {formatDate(toDate)}
+            </strong>
           </div>
 
+          <div>
+            <span className={styles.managementLabel}>Customers</span>
+
+            <strong>{formatNumber(kpis.totalFarmers)}</strong>
+          </div>
+
+          <div>
+            <span className={styles.managementLabel}>Expected Birds</span>
+
+            <strong>{formatNumber(kpis.expectedBirds)}</strong>
+          </div>
+        </div>
+
+        {/* KPI CARDS */}
+
+        <div className={styles.kpiGrid}>
           <div className={styles.kpiCard}>
-            <div className={`${styles.kpiIconBox} ${styles.greenBg}`}>
-              <FiTrendingUp />
+            <div className={`${styles.kpiIconBox} ${styles.orangeBg}`}>
+              <FiClock />
             </div>
+
             <div className={styles.kpiDetails}>
-              <span className={styles.kpiLabel}>Expected Birds</span>
-              <h3 className={styles.kpiValue}>
-                {formatNumber(kpis.expectedBirds)}
-              </h3>
-              <span className={`${styles.kpiTrend} ${styles.trendUp}`}>
-                <FiTrendingUp /> Forecast Demand
-              </span>
+              <span className={styles.kpiLabel}>Due Today</span>
+
+              <h3 className={styles.kpiValue}>{formatNumber(kpis.dueToday)}</h3>
+
+              <span className={styles.kpiTrend}>Replacement Today</span>
             </div>
           </div>
 
           <div className={styles.kpiCard}>
             <div className={`${styles.kpiIconBox} ${styles.amberBg}`}>
-              <FiZap />
+              <FiCalendar />
             </div>
+
             <div className={styles.kpiDetails}>
-              <span className={styles.kpiLabel}>Chick Requirement</span>
+              <span className={styles.kpiLabel}>Next 7 Days</span>
+
               <h3 className={styles.kpiValue}>
-                {formatNumber(kpis.expectedChickRequirement)}
+                {formatNumber(kpis.next7Days)}
               </h3>
-              <span className={`${styles.kpiTrend} ${styles.trendUp}`}>
-                <FiTrendingUp /> Required Production
-              </span>
+
+              <span className={styles.kpiTrend}>Due within next 7 days</span>
             </div>
           </div>
 
           <div className={styles.kpiCard}>
             <div className={`${styles.kpiIconBox} ${styles.blueBg}`}>
-              <FiUsers />
+              <FiTarget />
             </div>
+
             <div className={styles.kpiDetails}>
-              <span className={styles.kpiLabel}>Avg. Birds Per Farmer</span>
+              <span className={styles.kpiLabel}>Next 30 Days</span>
+
               <h3 className={styles.kpiValue}>
-                {formatNumber(kpis.averageBirdsPerFarmer)}
+                {formatNumber(kpis.next30Days)}
               </h3>
-              <span className={`${styles.kpiTrend} ${styles.trendUp}`}>
-                <FiTrendingUp /> Average Requirement
-              </span>
+
+              <span className={styles.kpiTrend}>Due within next 30 days</span>
             </div>
           </div>
 
           <div className={styles.kpiCard}>
-            <div className={`${styles.kpiIconBox} ${styles.redBg}`}>
-              <FiAlertTriangle />
+            <div className={`${styles.kpiIconBox} ${styles.purpleBg}`}>
+              <FiTrendingUp />
             </div>
+
             <div className={styles.kpiDetails}>
-              <span className={styles.kpiLabel}>Critical Replacements</span>
+              <span className={styles.kpiLabel}>Next 90 Days</span>
+
               <h3 className={styles.kpiValue}>
-                {formatNumber(kpis.criticalReplacements)}
+                {formatNumber(kpis.next90Days)}
               </h3>
-              <span className={`${styles.kpiTrend} ${styles.trendDown}`}>
-                <FiAlertTriangle /> Within 7 Days
-              </span>
+
+              <span className={styles.kpiTrend}>Due within next 90 days</span>
             </div>
           </div>
 
-          <div className={styles.kpiCard}>
-            <div className={`${styles.kpiIconBox} ${styles.orangeBg}`}>
-              <FiAlertTriangle />
+          <div className={`${styles.kpiCard} ${styles.kpiHighlightCard}`}>
+            <div className={`${styles.kpiIconBox} ${styles.greenBg}`}>
+              <FiPackage />
             </div>
+
             <div className={styles.kpiDetails}>
-              <span className={styles.kpiLabel}>Overdue Replacements</span>
+              <span className={styles.kpiLabel}>Expected Birds</span>
+
               <h3 className={styles.kpiValue}>
-                {formatNumber(kpis.overdueReplacements)}
+                {formatNumber(kpis.expectedBirds)}
               </h3>
-              <span className={`${styles.kpiTrend} ${styles.trendUp}`}>
-                <FiAlertTriangle /> Immediate Action
-              </span>
+
+              <span className={styles.kpiTrend}>Selected Range</span>
             </div>
           </div>
         </div>
 
-        {/* CONTENT GRID */}
-        <div className={styles.contentGrid}>
-          <div className={styles.leftAnalytics}>
-            {/* MONTHLY CHART */}
-            <div className={styles.chartPairRow}>
-              <div className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h3>📊 Monthly Replacement Forecast</h3>
-                  <select className={styles.miniSelect}>
-                    <option>Next 12 Months</option>
-                  </select>
-                </div>
-                <div className={styles.chartPlaceholder}>
-                  {charts.monthlyForecast.length === 0 ? (
-                    <p className={styles.noData}>No forecast data available</p>
-                  ) : (
-                    <div className={styles.monthlyChartList}>
-                      {charts.monthlyForecast.map((item) => (
-                        <div
-                          key={`${item.YearNumber}-${item.MonthNumber}`}
-                          className={styles.barRow}
-                        >
-                          <span>
-                            {item.Month?.slice(0, 3)} {item.YearNumber}
-                          </span>
-                          <div className={styles.barTrack}>
-                            <div
-                              className={styles.barFill}
-                              style={{
-                                width: `${(item.Birds / maxMonthlyBirds) * 100}%`,
-                              }}
-                            />
-                          </div>
-                          <strong>{formatNumber(item.Birds)}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+        {/* MONTHLY + MANAGEMENT */}
 
-              <div className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h3>🐣 Chick Requirement Trend</h3>
-                  <select className={styles.miniSelect}>
-                    <option>Next 12 Months</option>
-                  </select>
-                </div>
-                <div className={styles.chartPlaceholder}>
-                  {charts.monthlyForecast.length === 0 ? (
-                    <p className={styles.noData}>No data available</p>
-                  ) : (
-                    <div className={styles.monthlyChartList}>
-                      {charts.monthlyForecast.map((item) => (
-                        <div
-                          key={`${item.YearNumber}-${item.MonthNumber}-chicks`}
-                          className={styles.barRow}
-                        >
-                          <span>{item.Month?.slice(0, 3)}</span>
-                          <div className={styles.barTrack}>
-                            <div
-                              className={styles.barFill}
-                              style={{
-                                width: `${(item.ChickRequirement / maxMonthlyBirds) * 100}%`,
-                              }}
-                            />
-                          </div>
-                          <strong>{formatNumber(item.ChickRequirement)}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+        <div className={styles.managementGrid}>
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div>
+                <h3>Monthly Replacement Demand</h3>
+
+                <small>Selected replacement date range</small>
               </div>
             </div>
 
-            {/* HATCHERY / AREA / CALENDAR */}
-            <div className={styles.chartTripleRow}>
-              {/* HATCHERY */}
-              <div className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h3>🏭 Hatchery-wise Demand</h3>
-                </div>
-                <div className={styles.donutContainer}>
-                  <div className={styles.donutGraphic}>
-                    <div className={styles.donutCircle}>
-                      <svg viewBox="0 0 100 100" width="120" height="120">
-                        {charts.hatcheryDemand.map((item, index) => {
-                          const total =
-                            forecastSummary.totalChicksRequired || 1;
-                          const percentage = (item.Birds / total) * 100;
-                          const colors = [
-                            "#8b5cf6",
-                            "#3b82f6",
-                            "#10b981",
-                            "#f59e0b",
-                            "#ef4444",
-                          ];
-                          return (
-                            <circle
-                              key={item.Hatchery}
-                              cx="50"
-                              cy="50"
-                              r="40"
-                              fill="none"
-                              stroke={colors[index % colors.length]}
-                              strokeWidth="15"
-                              strokeDasharray={`${percentage * 2.513} 251.3`}
-                              strokeDashoffset="0"
-                              transform={`rotate(-90 50 50)`}
-                              opacity="0.9"
-                            />
-                          );
-                        })}
-                        <circle cx="50" cy="50" r="25" fill="white" />
-                      </svg>
-                      <div className={styles.donutCenterVal}>
-                        <strong>
-                          {formatNumber(forecastSummary.totalChicksRequired)}
-                        </strong>
-                        <small>Total Chicks</small>
-                      </div>
+            {(charts.monthlyForecast || []).length === 0 ? (
+              <p className={styles.noData}>No replacement demand available</p>
+            ) : (
+              <div className={styles.monthlyChartList}>
+                {charts.monthlyForecast.map((item) => (
+                  <div
+                    key={`${item.YearNumber}-${item.MonthNumber}`}
+                    className={styles.barRow}
+                  >
+                    <span>
+                      {item.Month?.slice(0, 3)} {item.YearNumber}
+                    </span>
+
+                    <div className={styles.barTrack}>
+                      <div
+                        className={styles.barFill}
+                        style={{
+                          width: `${
+                            (Number(item.Birds || 0) / maxMonthlyBirds) * 100
+                          }%`,
+                        }}
+                      />
+                    </div>
+
+                    <div className={styles.barValueGroup}>
+                      <strong>{formatNumber(item.Birds)}</strong>
+
+                      <small>{formatNumber(item.Farmers)} farmers</small>
                     </div>
                   </div>
-
-                  <ul className={styles.chartLegend}>
-                    {charts.hatcheryDemand.map((item, index) => {
-                      const total = forecastSummary.totalChicksRequired || 1;
-                      const percentage = Math.round((item.Birds / total) * 100);
-                      const colors = [
-                        "#8b5cf6",
-                        "#3b82f6",
-                        "#10b981",
-                        "#f59e0b",
-                        "#ef4444",
-                      ];
-                      return (
-                        <li key={item.Hatchery}>
-                          <span
-                            className={styles.legendDot}
-                            style={{
-                              background: colors[index % colors.length],
-                            }}
-                          />
-                          {item.Hatchery}: <strong>{percentage}%</strong>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
+                ))}
               </div>
-
-              {/* AREA */}
-              <div className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h3>📍 Area-wise Forecast</h3>
-                </div>
-                <div className={styles.barChartList}>
-                  {charts.areaForecast.slice(0, 5).map((item) => (
-                    <div className={styles.barRow} key={item.Area}>
-                      <span>{item.Area}</span>
-                      <div className={styles.barTrack}>
-                        <div
-                          className={styles.barFill}
-                          style={{
-                            width: `${(item.Birds / maxAreaBirds) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <strong>{formatNumber(item.Birds)}</strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* CALENDAR */}
-              <div className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h3>📅 Weekly Calendar</h3>
-                </div>
-                <div className={styles.calendarGrid}>
-                  {weekDays.map((day) => {
-                    const events = getEventsForDate(day);
-                    return (
-                      <div
-                        key={day.toISOString()}
-                        className={styles.calendarDay}
-                      >
-                        <span className={styles.dayHeader}>
-                          {day.toLocaleDateString("en-IN", {
-                            weekday: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                        {events.map((event, index) => (
-                          <div
-                            key={`${event.code}-${index}`}
-                            className={
-                              index % 2 === 0
-                                ? styles.calEventRed
-                                : styles.calEventOrange
-                            }
-                          >
-                            {event.farmer}
-                            <br />
-                            {formatNumber(event.birds)}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* RIGHT SUMMARY */}
-          <aside className={styles.rightSummaryPanel}>
-            <div className={styles.card}>
-              <h3 className={styles.summaryTitle}>📋 Forecast Summary</h3>
+          <div className={`${styles.card} ${styles.managementSummaryCard}`}>
+            <div className={styles.cardHeader}>
+              <h3>Management Summary</h3>
+            </div>
 
-              <div className={styles.summaryMetrics}>
-                <div className={styles.summaryRow}>
-                  <span>Current Forecast</span>
-                  <strong>
-                    {formatNumber(forecastSummary.totalExpectedBirds)} Birds
-                  </strong>
-                </div>
-                <div className={styles.summaryRow}>
-                  <span>Farmers in Forecast</span>
-                  <strong>{formatNumber(forecastSummary.totalFarmers)}</strong>
-                </div>
-                <div className={styles.summaryRow}>
-                  <span>Chicks Required</span>
-                  <strong>
-                    {formatNumber(forecastSummary.totalChicksRequired)}
-                  </strong>
-                </div>
+            <div className={styles.summaryMetrics}>
+              <div className={styles.summaryRow}>
+                <span>Customers in Selected Range</span>
+
+                <strong>{formatNumber(kpis.totalFarmers)}</strong>
               </div>
 
-              <hr className={styles.divider} />
+              <div className={styles.summaryRow}>
+                <span>Immediate Attention</span>
 
-              <div className={styles.metricList}>
-                <div className={styles.metricItem}>
-                  <FiUser className={styles.metricIcon} />
-                  <span>Total Farmers</span>
-                  <strong>{formatNumber(forecastSummary.totalFarmers)}</strong>
-                </div>
-                <div className={styles.metricItem}>
-                  <FiTrendingUp className={styles.metricIcon} />
-                  <span>Expected Birds</span>
-                  <strong>
-                    {formatNumber(forecastSummary.totalExpectedBirds)}
-                  </strong>
-                </div>
-                <div className={styles.metricItem}>
-                  <FiZap className={styles.metricIcon} />
-                  <span>Chicks to Produce</span>
-                  <strong>
-                    {formatNumber(forecastSummary.totalChicksRequired)}
-                  </strong>
-                </div>
+                <strong>{formatNumber(immediateActionCount)}</strong>
               </div>
 
-              <hr className={styles.divider} />
+              <div className={styles.summaryRow}>
+                <span>Expected Birds</span>
 
-              {/* READINESS */}
-              <div className={styles.readinessBox}>
-                <h4>Production Readiness</h4>
-                <div className={styles.gaugeGraphic}>
-                  <div className={styles.gaugeInner}>
-                    <span>78%</span>
-                    <small>Good</small>
-                  </div>
+                <strong>{formatNumber(kpis.expectedBirds)}</strong>
+              </div>
+
+              {highestDemandArea && (
+                <div className={styles.summaryRow}>
+                  <span>Highest Demand Area</span>
+
+                  <strong>{highestDemandArea.Area}</strong>
                 </div>
-                <p className={styles.readinessNote}>
-                  You are well prepared for upcoming demand.
+              )}
+
+              {peakMonth && (
+                <div className={styles.summaryRow}>
+                  <span>Peak Month</span>
+
+                  <strong>
+                    {peakMonth.Month} {peakMonth.YearNumber}
+                  </strong>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.actionSummary}>
+              <FiCheckCircle />
+
+              <div>
+                <strong>Current Replacement View</strong>
+
+                <p>
+                  Showing replacements from {formatDate(fromDate)} to{" "}
+                  {formatDate(toDate)}.
                 </p>
               </div>
-
-              {/* AI INSIGHTS */}
-              <div className={styles.aiInsightsBox}>
-                <div className={styles.aiHeader}>
-                  <FiZap className={styles.aiIcon} />
-                  <h4>AI Insights</h4>
-                </div>
-                <ul className={styles.aiList}>
-                  {charts.monthlyForecast.length > 0 && (
-                    <li>
-                      <strong>
-                        Peak demand in{" "}
-                        {
-                          charts.monthlyForecast.reduce(
-                            (max, item) =>
-                              item.Birds > max.Birds ? item : max,
-                            charts.monthlyForecast[0],
-                          ).Month
-                        }
-                      </strong>
-                      <span>
-                        Prepare{" "}
-                        {formatNumber(
-                          Math.max(
-                            ...charts.monthlyForecast.map((item) => item.Birds),
-                          ),
-                        )}{" "}
-                        chicks
-                      </span>
-                    </li>
-                  )}
-                  {charts.areaForecast.length > 0 && (
-                    <li>
-                      <strong>
-                        {charts.areaForecast[0].Area} has highest demand
-                      </strong>
-                      <span>
-                        Plan {formatNumber(charts.areaForecast[0].Birds)} birds
-                      </span>
-                    </li>
-                  )}
-                </ul>
-                <button className={styles.btnLink}>
-                  View All <FiChevronRight />
-                </button>
-              </div>
             </div>
-          </aside>
+          </div>
         </div>
 
-        {/* TABLE */}
+        {/* AREA-WISE */}
+
+        <div className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h3>
+                <FiMapPin /> Area-wise Replacement Requirement
+              </h3>
+
+              <small>Selected replacement date range</small>
+            </div>
+          </div>
+
+          {areaAnalysis.length === 0 ? (
+            <p className={styles.noData}>No area-wise data</p>
+          ) : (
+            <div className={styles.areaManagementTable}>
+              <table className={styles.dataTable}>
+                <thead>
+                  <tr>
+                    <th>Area</th>
+
+                    <th>Farmers</th>
+
+                    <th>Expected Birds</th>
+
+                    <th>Avg. / Customer</th>
+
+                    <th>Demand</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {areaAnalysis.map((item) => (
+                    <tr key={item.Area}>
+                      <td className={styles.fwBold}>{item.Area}</td>
+
+                      <td>{formatNumber(item.Farmers)}</td>
+
+                      <td className={styles.fwBold}>
+                        {formatNumber(item.Birds)}
+                      </td>
+
+                      <td>{formatNumber(item.averageBirds)}</td>
+
+                      <td>
+                        <div className={styles.shareCell}>
+                          <div className={styles.barTrack}>
+                            <div
+                              className={styles.barFill}
+                              style={{
+                                width: `${(item.Birds / maxAreaBirds) * 100}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* HATCHERY */}
+
+        <div className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h3>Hatchery-wise Production Demand</h3>
+
+              <small>Selected replacement range</small>
+            </div>
+          </div>
+
+          <div className={styles.hatcheryList}>
+            {(charts.hatcheryDemand || []).length === 0 ? (
+              <p className={styles.noData}>No hatchery demand</p>
+            ) : (
+              charts.hatcheryDemand.map((item) => (
+                <div className={styles.hatcheryItem} key={item.Hatchery}>
+                  <div>
+                    <strong>{item.Hatchery}</strong>
+
+                    <span>{formatNumber(item.Farmers)} customers</span>
+                  </div>
+
+                  <strong>{formatNumber(item.Birds)} Birds</strong>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* CUSTOMER TABLE */}
+
         <section className={styles.tableCard}>
           <div className={styles.tableHeader}>
             <div className={styles.tableTitleGroup}>
-              <h2>📋 Upcoming Replacement Forecast</h2>
+              <div>
+                <h2>Customer Replacement Schedule</h2>
+
+                <p>Replacement date: each flock hatch date + 80 weeks</p>
+              </div>
+
               <span className={styles.badgeCounter}>
-                {formatNumber(pagination.totalRecords)} Records
+                {formatNumber(pagination.totalRecords)} Customers
               </span>
             </div>
           </div>
 
           {loading ? (
             <div className={styles.loadingState}>
-              ⏳ Loading forecast data...
+              Loading replacement forecast...
             </div>
           ) : (
             <div className={styles.responsiveTableWrapper}>
               <table className={styles.dataTable}>
                 <thead>
                   <tr>
-                    <th>Farmer Name</th>
-                    <th>Customer Code</th>
+                    <th>Customer</th>
+
+                    <th>Code</th>
+
                     <th>Area</th>
-                    <th>Current Hatchery</th>
-                    <th>Last Placement</th>
-                    <th>Expected Date</th>
-                    <th>Bird Requirement</th>
-                    <th>Days Left</th>
-                    <th>Priority</th>
+
+                    <th>Hatchery</th>
+
+                    <th>Flock Hatch Date</th>
+
+                    <th>Replacement Date</th>
+
+                    <th>Birds</th>
+
+                    <th>Timeline</th>
+
                     <th>Status</th>
-                    <th>Actions</th>
+
+                    <th>Action</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {replacements.length === 0 ? (
                     <tr>
-                      <td colSpan="11" className={styles.noData}>
-                        No replacement forecast found
+                      <td colSpan="10" className={styles.noData}>
+                        No customer has replacement between{" "}
+                        {formatDate(fromDate)} and {formatDate(toDate)}
                       </td>
                     </tr>
                   ) : (
                     replacements.map((row) => (
-                      <tr key={row.id}>
-                        <td className={styles.fwBold}>{row.farmer}</td>
+                      <tr
+                        key={`${row.id}-${row.lastPlacement}-${row.hatchery || ""}`}
+                      >
+                        <td>
+                          <div className={styles.customerCell}>
+                            <strong>{row.farmer}</strong>
+
+                            <small>
+                              {formatNumber(row.totalPlacements)} historical
+                              placements
+                            </small>
+                          </div>
+                        </td>
+
                         <td>{row.code}</td>
+
                         <td>{row.area}</td>
+
                         <td>{row.hatchery}</td>
+
                         <td>{formatDate(row.lastPlacement)}</td>
-                        <td>{formatDate(row.expectedDate)}</td>
+
+                        <td className={styles.fwBold}>
+                          {formatDate(row.expectedDate)}
+                        </td>
+
                         <td className={styles.fwBold}>
                           {formatNumber(row.requirement)}
                         </td>
+
                         <td>
                           <span className={styles.daysBadge}>
-                            {row.daysLeft} days
+                            {getDaysText(row)}
                           </span>
                         </td>
+
                         <td>
                           <span
-                            className={`${styles.badgePriority} ${getPriorityClass(row.priority)}`}
-                          >
-                            {row.priority}
-                          </span>
-                        </td>
-                        <td>
-                          <span
-                            className={`${styles.badgeStatus} ${
-                              row.status === "Due Soon" ||
-                              row.status === "Overdue"
-                                ? styles.statusDue
-                                : styles.statusUpcoming
-                            }`}
+                            className={`${styles.statusBadge} ${getStatusClass(
+                              row.status,
+                            )}`}
                           >
                             {row.status}
                           </span>
                         </td>
+
                         <td>
-                          <div className={styles.actionBtns}>
-                            <button className={styles.iconBtn}>
-                              <FiEye />
-                            </button>
-                            <button className={styles.iconBtn}>
-                              <FiMoreVertical />
-                            </button>
-                          </div>
+                          <button
+                            className={styles.iconBtn}
+                            title="View customer"
+                          >
+                            <FiEye />
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -895,20 +1221,53 @@ export default function ReplacementForecast() {
           )}
 
           {/* PAGINATION */}
-          {pagination.totalPages > 1 && (
+
+          {Number(pagination.totalPages || 0) > 1 && (
             <div className={styles.paginationContainer}>
+              <button
+                className={styles.pageBtn}
+                disabled={page === 1}
+                onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+              >
+                Previous
+              </button>
+
               {Array.from(
-                { length: pagination.totalPages },
+                {
+                  length: pagination.totalPages,
+                },
+
                 (_, index) => index + 1,
-              ).map((pageNumber) => (
-                <button
-                  key={pageNumber}
-                  className={`${styles.pageBtn} ${page === pageNumber ? styles.pageActive : ""}`}
-                  onClick={() => setPage(pageNumber)}
-                >
-                  {pageNumber}
-                </button>
-              ))}
+              )
+
+                .filter(
+                  (pageNumber) =>
+                    pageNumber === 1 ||
+                    pageNumber === pagination.totalPages ||
+                    Math.abs(pageNumber - page) <= 2,
+                )
+
+                .map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    className={`${styles.pageBtn} ${
+                      page === pageNumber ? styles.pageActive : ""
+                    }`}
+                    onClick={() => setPage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+
+              <button
+                className={styles.pageBtn}
+                disabled={page === pagination.totalPages}
+                onClick={() =>
+                  setPage((prev) => Math.min(prev + 1, pagination.totalPages))
+                }
+              >
+                Next
+              </button>
             </div>
           )}
         </section>

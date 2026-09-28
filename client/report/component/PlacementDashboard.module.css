@@ -234,7 +234,7 @@
 /* Metrics */
 .metricsGrid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1197,4 +1197,113 @@
     min-width: 40px;
     font-size: 11px;
   }
+}
+/* ============================================================
+   REPLACEMENT COMPARISON
+============================================================ */
+
+.shortageValue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+
+  background: #fee2e2;
+  color: #b91c1c;
+
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.extraValue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+
+  background: #dcfce7;
+  color: #15803d;
+
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.exactValue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+
+  background: #e0f2fe;
+  color: #0369a1;
+
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.textDanger {
+  color: #dc2626 !important;
+}
+
+.textGreen {
+  color: #16a34a !important;
+}
+
+/* ============================================================
+   REPLACEMENT SUMMARY BOX
+============================================================ */
+
+.replacementSummaryBox {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+
+  margin-top: 14px;
+  padding: 12px;
+
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.replacementSummaryBox > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  padding: 8px;
+  background: #ffffff;
+  border-radius: 7px;
+}
+
+.replacementSummaryBox span {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.replacementSummaryBox strong {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+/* ============================================================
+   NO REPLACEMENT
+============================================================ */
+
+.noReplacementBox {
+  padding: 12px;
+
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
 }

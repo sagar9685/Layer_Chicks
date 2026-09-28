@@ -40,6 +40,7 @@ export default function FarmerManagement() {
   const [selectedArea, setSelectedArea] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [search, setSearch] = useState("");
+
   const formatDate = (date) =>
     new Date(date).toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -63,9 +64,40 @@ export default function FarmerManagement() {
     return area && status && text;
   });
 
+  function getAllSessions() {
+    const now = new Date();
+
+    let currentStartYear =
+      now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+
+    const startYear = 2017;
+
+    const list = [];
+
+    for (let year = currentStartYear; year >= startYear; year--) {
+      const from = String(year).slice(-2);
+      const to = String(year + 1).slice(-2);
+
+      list.push({
+        label: `${from}-${to}`,
+        value: `${from}${to}`,
+      });
+    }
+
+    return list;
+  }
+
+  const sessions = getAllSessions();
+
+  const [selectedSession, setSelectedSession] = useState(
+    sessions[0]?.value || "",
+  );
+
+  // uske baad
+
   const areasCovered = new Set(farmerData.map((f) => f.location)).size;
 
-  const activeFarmers = farmerData.filter((f) => f.status === "Active").length;
+  // const activeFarmers = farmerData.filter((f) => f.status === "Active").length;
 
   const getReplacementStatus = (date) => {
     const today = new Date();
@@ -120,13 +152,17 @@ export default function FarmerManagement() {
 
   useEffect(() => {
     fetchFarmers();
-  }, []);
+  }, [selectedSession]);
 
   const fetchFarmers = async () => {
     try {
       setLoading(true);
 
-      const res = await axios.get("http://localhost:5007/api/farmers");
+      const res = await axios.get("http://137.97.174.50:5007/api/farmers", {
+        params: {
+          session: selectedSession,
+        },
+      });
 
       setFarmerData(res.data.data);
 
@@ -230,6 +266,23 @@ export default function FarmerManagement() {
         <div className={styles.filterBar}>
           <select
             className={styles.selectFilter}
+            value={selectedSession}
+            onChange={(e) => {
+              setSelectedSession(e.target.value);
+              setCurrentPage(1);
+            }}
+          >
+            <option value="all">All Sessions</option>
+
+            {sessions.map((session) => (
+              <option key={session.value} value={session.value}>
+                {session.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className={styles.selectFilter}
             value={selectedArea}
             onChange={(e) => setSelectedArea(e.target.value)}
           >
@@ -257,7 +310,7 @@ export default function FarmerManagement() {
               <Users size={20} />
             </div>
             <div>
-              <span className={styles.kpiLabel}>Total Farmers</span>
+              <span className={styles.kpiLabel}>Total Layer Farmers</span>
               <h2 className={styles.kpiValue}>{farmerData.length}</h2>
               <span className={styles.trendUp}>↑ 8 this month</span>
             </div>
@@ -268,7 +321,7 @@ export default function FarmerManagement() {
               <CheckCircle size={20} />
             </div>
             <div>
-              <span className={styles.kpiLabel}>Active Farmers</span>
+              <span className={styles.kpiLabel}>Active Layer Farmers</span>
               <h2 className={styles.kpiValue}>142</h2>
               <span className={styles.trendUp}>↑ 12 this month</span>
             </div>
@@ -301,7 +354,7 @@ export default function FarmerManagement() {
         <div className={styles.farmerGrid}>
           {currentFarmers.map((farmer) => (
             <div
-              key={farmer.id}
+              key={farmer.uniqueId}
               className={`${styles.farmerCard} ${selectedFarmer?.id === farmer.id ? styles.activeCard : ""}`}
               onClick={() => handleFarmerClick(farmer)}
             >
@@ -440,10 +493,10 @@ export default function FarmerManagement() {
           <div className={styles.drawerTabs}>
             {[
               "Overview",
-              "Placements",
-              "Replacement",
-              "Performance",
-              "Documents",
+              // "Placements",
+              // "Replacement",
+              // "Performance",
+              // "Documents",
             ].map((tab) => (
               <button
                 key={tab}

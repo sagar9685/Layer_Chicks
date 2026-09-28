@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import styles from "./Login.module.css";
 
-const API_BASE_URL = "http://localhost:5007/api";
+const API_BASE_URL = "http://137.97.174.50:5007/api";
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -323,7 +323,7 @@ const Login = () => {
                   type="email"
                   id="email"
                   name="email"
-                  placeholder="Enter your email address"
+                  placeholder="sagar@gmail.com"
                   value={formData.email}
                   onChange={handleChange}
                   required
