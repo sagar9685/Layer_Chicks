@@ -315,13 +315,28 @@ export default function ReplacementForecast() {
   const formatDate = (date) => {
     if (!date) return "-";
 
-    return new Date(date).toLocaleDateString("en-IN", {
-      day: "2-digit",
+    const dateString = String(date).split("T")[0];
 
-      month: "short",
+    const [year, month, day] = dateString.split("-").map(Number);
 
-      year: "numeric",
-    });
+    if (!year || !month || !day) return "-";
+
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    return `${String(day).padStart(2, "0")} ${monthNames[month - 1]} ${year}`;
   };
 
   // ============================================================

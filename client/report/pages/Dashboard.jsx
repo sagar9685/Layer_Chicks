@@ -416,17 +416,20 @@ const Dashboard = () => {
         const currentDate = new Date();
 
         const upcomingFrom = dateToInput(currentDate);
-
         const upcomingTo = dateToInput(addDays(currentDate, 30));
 
         const params = new URLSearchParams({
+          session,
           fromDate: upcomingFrom,
-
           toDate: upcomingTo,
-
           page: String(upcomingPage),
-
           limit: String(UPCOMING_LIMIT),
+        });
+
+        console.log("UPCOMING REQUEST:", {
+          session,
+          fromDate: upcomingFrom,
+          toDate: upcomingTo,
         });
 
         const response = await fetch(
@@ -446,16 +449,15 @@ const Dashboard = () => {
           throw new Error(json.message || "Upcoming replacement API failed");
         }
 
+        console.log("UPCOMING RESPONSE:", json);
+
         setUpcomingData(json);
 
         setUpcomingPagination(
           json.pagination || {
             totalRecords: 0,
-
             currentPage: upcomingPage,
-
             rowsPerPage: UPCOMING_LIMIT,
-
             totalPages: 0,
           },
         );
@@ -467,7 +469,6 @@ const Dashboard = () => {
         console.error("Upcoming API Error:", err);
       } finally {
         setUpcomingLoading(false);
-
         setInitialLoading(false);
       }
     };
@@ -477,7 +478,7 @@ const Dashboard = () => {
     return () => {
       controller.abort();
     };
-  }, [upcomingPage]);
+  }, [upcomingPage, session]);
 
   // ============================================================
   // FORMAT HELPERS
@@ -597,11 +598,15 @@ const Dashboard = () => {
   // ============================================================
 
   const upcomingSchedule = useMemo(() => {
-    return (upcomingData?.replacements || [])
-      .filter((item) => Number(item.daysLeft) >= 0)
-      .sort((a, b) => new Date(a.expectedDate) - new Date(b.expectedDate));
-  }, [upcomingData]);
+    const rows = upcomingData?.replacements || [];
 
+    return [...rows].sort((a, b) => {
+      const dateA = String(a.expectedDate || "");
+      const dateB = String(b.expectedDate || "");
+
+      return dateA.localeCompare(dateB);
+    });
+  }, [upcomingData]);
   // ============================================================
   // MONTHLY FORECAST
   // Selected date range
@@ -679,6 +684,7 @@ const Dashboard = () => {
                 value={session}
                 onChange={(e) => {
                   setSession(e.target.value);
+                  setUpcomingPage(1);
                 }}
               >
                 {sessions.map((item) => (

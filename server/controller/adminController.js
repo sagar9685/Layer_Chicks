@@ -61,11 +61,30 @@ const parseDateOnly = (value) => {
 const formatDateOnly = (date) => {
   if (!date) return null;
 
-  const year = date.getFullYear();
+  // Already YYYY-MM-DD string
+  if (typeof date === "string") {
+    return date.split("T")[0];
+  }
 
-  const month = String(date.getMonth() + 1).padStart(2, "0");
+  // Date object
+  if (date instanceof Date && !isNaN(date.getTime())) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
 
-  const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  // SQL driver / other parsable value
+  const parsed = new Date(date);
+
+  if (isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 };
@@ -2005,20 +2024,47 @@ exports.getReplacementForecast = async (req, res) => {
     // Default = TODAY
     // =====================================================
 
-    const today = new Date();
+    const getTodayString = () => {
+      const now = new Date();
 
-    const parsedFromDate = fromDate ? parseDateOnly(fromDate) : today;
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
 
-    const parsedToDate = toDate ? parseDateOnly(toDate) : today;
+      return `${year}-${month}-${day}`;
+    };
 
-    if (fromDate && !parsedFromDate) {
+    const isValidDateString = (value) => {
+      const str = String(value || "");
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return false;
+      }
+
+      const [year, month, day] = str.split("-").map(Number);
+
+      const date = new Date(year, month - 1, day);
+
+      return (
+        date.getFullYear() === year &&
+        date.getMonth() === month - 1 &&
+        date.getDate() === day
+      );
+    };
+
+    const todayString = getTodayString();
+
+    const parsedFromDate = fromDate || todayString;
+    const parsedToDate = toDate || todayString;
+
+    if (!isValidDateString(parsedFromDate)) {
       return res.status(400).json({
         success: false,
         message: "Invalid fromDate",
       });
     }
 
-    if (toDate && !parsedToDate) {
+    if (!isValidDateString(parsedToDate)) {
       return res.status(400).json({
         success: false,
         message: "Invalid toDate",
@@ -2088,13 +2134,23 @@ exports.getReplacementForecast = async (req, res) => {
 
       request.input("Hatchery", sql.VarChar(200), hatcheryValue);
 
-      request.input("FromDate", sql.Date, parsedFromDate);
+      // Keep date-only values as YYYY-MM-DD strings.
+      // SQL converts them explicitly using style 23.
+      request.input("FromDate", sql.VarChar(10), parsedFromDate);
 
-      request.input("ToDate", sql.Date, parsedToDate);
+      request.input("ToDate", sql.VarChar(10), parsedToDate);
 
-      request.input("SessionStart", sql.Date, sessionStart);
+      request.input(
+        "SessionStart",
+        sql.VarChar(10),
+        sessionStart ? formatDateOnly(sessionStart) : null,
+      );
 
-      request.input("SessionEnd", sql.Date, sessionEnd);
+      request.input(
+        "SessionEnd",
+        sql.VarChar(10),
+        sessionEnd ? formatDateOnly(sessionEnd) : null,
+      );
 
       return request;
     };
@@ -2105,12 +2161,10 @@ exports.getReplacementForecast = async (req, res) => {
     // IMPORTANT:
     // Har HatchDate ek separate flock hai.
     //
-    // Same customer:
+    // Example:
     //
     // 12/03/2025 -> +80 weeks -> replacement 1
     // 15/05/2025 -> +80 weeks -> replacement 2
-    //
-    // Dono rows aayengi.
     //
     // Same customer + same hatch date + same hatchery
     // ki multiple entries merge hongi.
@@ -2120,7 +2174,6 @@ exports.getReplacementForecast = async (req, res) => {
       WITH FlockByDate AS
       (
           SELECT
-
               p.AccCode,
 
               MAX(
@@ -2144,8 +2197,7 @@ exports.getReplacementForecast = async (req, res) => {
               ) AS Hatchery,
 
               CAST(
-                  p.HatchDate
-                  AS DATE
+                  p.HatchDate AS DATE
               ) AS PlacementDate,
 
               SUM(
@@ -2169,11 +2221,9 @@ exports.getReplacementForecast = async (req, res) => {
                   )
               ) AS Mortality
 
-          FROM
-              PrintData p
+          FROM PrintData p
 
           WHERE
-
               UPPER(
                   LTRIM(
                       RTRIM(
@@ -2209,12 +2259,10 @@ exports.getReplacementForecast = async (req, res) => {
               AND p.HatchDate IS NOT NULL
 
           GROUP BY
-
               p.AccCode,
 
               CAST(
-                  p.HatchDate
-                  AS DATE
+                  p.HatchDate AS DATE
               ),
 
               ISNULL(
@@ -2233,13 +2281,9 @@ exports.getReplacementForecast = async (req, res) => {
       FlockData AS
       (
           SELECT
-
               AccCode,
-
               FarmerName,
-
               Area,
-
               Hatchery,
 
               PlacementDate
@@ -2249,7 +2293,6 @@ exports.getReplacementForecast = async (req, res) => {
                   AS BirdRequirement,
 
               FreeBirds,
-
               Mortality,
 
               COUNT(*) OVER
@@ -2267,26 +2310,24 @@ exports.getReplacementForecast = async (req, res) => {
                   AS DATE
               ) AS ExpectedReplacementDate
 
-          FROM
-              FlockByDate
+          FROM FlockByDate
       )
     `;
 
     // =====================================================
     // MASTER FILTER
     //
-    // Search / Area / Hatchery / Session
+    // Search / Area / Farmer / Hatchery / Session
     // =====================================================
 
     const masterWhere = `
       (
           @SessionStart IS NULL
 
-          OR ExpectedReplacementDate
-             BETWEEN
-                 @SessionStart
-             AND
-                 @SessionEnd
+          OR ExpectedReplacementDate BETWEEN
+              CONVERT(DATE, @SessionStart, 23)
+              AND
+              CONVERT(DATE, @SessionEnd, 23)
       )
 
       AND
@@ -2294,16 +2335,16 @@ exports.getReplacementForecast = async (req, res) => {
           @Search = ''
 
           OR AccCode LIKE
-             '%' + @Search + '%'
+              '%' + @Search + '%'
 
           OR FarmerName LIKE
-             '%' + @Search + '%'
+              '%' + @Search + '%'
 
           OR Area LIKE
-             '%' + @Search + '%'
+              '%' + @Search + '%'
 
           OR Hatchery LIKE
-             '%' + @Search + '%'
+              '%' + @Search + '%'
       )
 
       AND
@@ -2331,8 +2372,6 @@ exports.getReplacementForecast = async (req, res) => {
     // =====================================================
     // SELECTED RANGE
     //
-    // Frontend:
-    //
     // Today
     // Next 7
     // Next 30
@@ -2343,9 +2382,11 @@ exports.getReplacementForecast = async (req, res) => {
     const selectedRangeWhere = `
       ${masterWhere}
 
-      AND ExpectedReplacementDate >= @FromDate
+      AND ExpectedReplacementDate >=
+          CONVERT(DATE, @FromDate, 23)
 
-      AND ExpectedReplacementDate <= @ToDate
+      AND ExpectedReplacementDate <=
+          CONVERT(DATE, @ToDate, 23)
     `;
 
     // =====================================================
@@ -2364,176 +2405,114 @@ exports.getReplacementForecast = async (req, res) => {
       ForecastData AS
       (
           SELECT
-
               *,
 
               DATEDIFF(
                   DAY,
 
                   CAST(
-                      GETDATE()
-                      AS DATE
+                      GETDATE() AS DATE
                   ),
 
                   ExpectedReplacementDate
               ) AS DaysRemaining
 
-          FROM
-              FlockData
+          FROM FlockData
       ),
 
       FinalData AS
       (
           SELECT
-
               *,
 
               CASE
+                  WHEN DaysRemaining < 0
+                  THEN 'Overdue'
 
-                  WHEN
-                      DaysRemaining < 0
+                  WHEN DaysRemaining = 0
+                  THEN 'Due Today'
 
-                  THEN
-                      'Overdue'
+                  WHEN DaysRemaining
+                       BETWEEN 1 AND 7
+                  THEN 'Next 7 Days'
 
+                  WHEN DaysRemaining
+                       BETWEEN 8 AND 30
+                  THEN 'Next 30 Days'
 
-                  WHEN
-                      DaysRemaining = 0
+                  WHEN DaysRemaining
+                       BETWEEN 31 AND 90
+                  THEN 'Next 90 Days'
 
-                  THEN
-                      'Due Today'
-
-
-                  WHEN
-                      DaysRemaining
-                      BETWEEN 1 AND 7
-
-                  THEN
-                      'Next 7 Days'
-
-
-                  WHEN
-                      DaysRemaining
-                      BETWEEN 8 AND 30
-
-                  THEN
-                      'Next 30 Days'
-
-
-                  WHEN
-                      DaysRemaining
-                      BETWEEN 31 AND 90
-
-                  THEN
-                      'Next 90 Days'
-
-
-                  ELSE
-                      'Future'
-
+                  ELSE 'Future'
               END AS Status,
 
-
               CASE
+                  WHEN DaysRemaining <= 0
+                  THEN 'Critical'
 
-                  WHEN
-                      DaysRemaining <= 0
+                  WHEN DaysRemaining
+                       BETWEEN 1 AND 7
+                  THEN 'High'
 
-                  THEN
-                      'Critical'
+                  WHEN DaysRemaining
+                       BETWEEN 8 AND 30
+                  THEN 'Medium'
 
+                  WHEN DaysRemaining
+                       BETWEEN 31 AND 90
+                  THEN 'Normal'
 
-                  WHEN
-                      DaysRemaining
-                      BETWEEN 1 AND 7
-
-                  THEN
-                      'High'
-
-
-                  WHEN
-                      DaysRemaining
-                      BETWEEN 8 AND 30
-
-                  THEN
-                      'Medium'
-
-
-                  WHEN
-                      DaysRemaining
-                      BETWEEN 31 AND 90
-
-                  THEN
-                      'Normal'
-
-
-                  ELSE
-                      'Low'
-
+                  ELSE 'Low'
               END AS Priority,
 
-
               CASE
+                  WHEN DaysRemaining < 0
 
-                  WHEN
-                      DaysRemaining < 0
+                  THEN ABS(
+                      DaysRemaining
+                  )
 
-                  THEN
-                      ABS(
-                          DaysRemaining
-                      )
-
-                  ELSE
-                      0
-
+                  ELSE 0
               END AS OverdueDays
 
-          FROM
-              ForecastData
+          FROM ForecastData
 
           WHERE
               ${selectedRangeWhere}
       )
 
       SELECT
-
           *,
 
           COUNT(*) OVER()
               AS TotalRecords
 
-      FROM
-          FinalData
+      FROM FinalData
 
       ORDER BY
-
           ExpectedReplacementDate ASC,
-
           FarmerName ASC,
-
           LastPlacementDate ASC,
-
           Hatchery ASC
 
-      OFFSET
-          @Offset ROWS
+      OFFSET @Offset ROWS
 
-      FETCH NEXT
-          @PageLimit ROWS ONLY;
+      FETCH NEXT @PageLimit ROWS ONLY;
     `;
 
     const result = await request.query(forecastQuery);
 
-    const rows = result.recordset;
+    const rows = result.recordset || [];
 
-    const totalRecords = rows.length > 0 ? Number(rows[0].TotalRecords) : 0;
+    const totalRecords =
+      rows.length > 0 ? Number(rows[0].TotalRecords || 0) : 0;
 
     // =====================================================
     // RESPONSE TABLE
     // =====================================================
 
     const replacements = rows.map((item) => ({
-      // Unique flock id
       id:
         `${item.AccCode}|` +
         `${formatDateOnly(item.LastPlacementDate)}|` +
@@ -2547,13 +2526,13 @@ exports.getReplacementForecast = async (req, res) => {
 
       hatchery: item.Hatchery,
 
-      lastPlacement: item.LastPlacementDate,
+      lastPlacement: formatDateOnly(item.LastPlacementDate),
 
-      latestHatchDate: item.LastPlacementDate,
+      latestHatchDate: formatDateOnly(item.LastPlacementDate),
 
-      expectedDate: item.ExpectedReplacementDate,
+      expectedDate: formatDateOnly(item.ExpectedReplacementDate),
 
-      nextExpectedDate: item.ExpectedReplacementDate,
+      nextExpectedDate: formatDateOnly(item.ExpectedReplacementDate),
 
       replacementWeeks: 80,
 
@@ -2577,10 +2556,12 @@ exports.getReplacementForecast = async (req, res) => {
     // =====================================================
     // MANAGEMENT KPI
     //
-    // Always calculated from TODAY
+    // IMPORTANT:
+    // These are calculated from TODAY,
+    // not selected fromDate/toDate.
     //
     // Due Today
-    // Next 7 = 1-7
+    // Next 7 = 1-7 days
     // Next 30 = 1-30 cumulative
     // Next 90 = 1-90 cumulative
     // =====================================================
@@ -2593,29 +2574,25 @@ exports.getReplacementForecast = async (req, res) => {
       ForecastData AS
       (
           SELECT
-
               *,
 
               DATEDIFF(
                   DAY,
 
                   CAST(
-                      GETDATE()
-                      AS DATE
+                      GETDATE() AS DATE
                   ),
 
                   ExpectedReplacementDate
               ) AS DaysRemaining
 
-          FROM
-              FlockData
+          FROM FlockData
 
           WHERE
               ${masterWhere}
       )
 
       SELECT
-
           COUNT(*)
               AS TotalFlocks,
 
@@ -2630,275 +2607,174 @@ exports.getReplacementForecast = async (req, res) => {
               0
           ) AS ExpectedBirds,
 
-
-          /* =================================
-             OVERDUE
-          ================================= */
+          /* OVERDUE */
 
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining < 0
+                      THEN 1
 
-                      WHEN
-                          DaysRemaining < 0
-
-                      THEN
-                          1
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Overdue,
 
-
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining < 0
+                      THEN BirdRequirement
 
-                      WHEN
-                          DaysRemaining < 0
-
-                      THEN
-                          BirdRequirement
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS OverdueBirds,
 
-
-          /* =================================
-             DUE TODAY
-          ================================= */
+          /* DUE TODAY */
 
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining = 0
+                      THEN 1
 
-                      WHEN
-                          DaysRemaining = 0
-
-                      THEN
-                          1
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS DueToday,
 
-
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining = 0
+                      THEN BirdRequirement
 
-                      WHEN
-                          DaysRemaining = 0
-
-                      THEN
-                          BirdRequirement
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS DueTodayBirds,
 
-
-          /* =================================
-             NEXT 7 DAYS
-          ================================= */
+          /* NEXT 7 DAYS */
 
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining
+                           BETWEEN 1 AND 7
+                      THEN 1
 
-                      WHEN
-                          DaysRemaining
-                          BETWEEN 1 AND 7
-
-                      THEN
-                          1
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Next7Days,
 
-
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining
+                           BETWEEN 1 AND 7
+                      THEN BirdRequirement
 
-                      WHEN
-                          DaysRemaining
-                          BETWEEN 1 AND 7
-
-                      THEN
-                          BirdRequirement
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Next7DaysBirds,
 
-
-          /* =================================
-             NEXT 30 DAYS
-             CUMULATIVE
-             1 TO 30
-          ================================= */
+          /* NEXT 30 DAYS - CUMULATIVE */
 
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining
+                           BETWEEN 1 AND 30
+                      THEN 1
 
-                      WHEN
-                          DaysRemaining
-                          BETWEEN 1 AND 30
-
-                      THEN
-                          1
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Next30Days,
 
-
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining
+                           BETWEEN 1 AND 30
+                      THEN BirdRequirement
 
-                      WHEN
-                          DaysRemaining
-                          BETWEEN 1 AND 30
-
-                      THEN
-                          BirdRequirement
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Next30DaysBirds,
 
-
-          /* =================================
-             NEXT 90 DAYS
-             CUMULATIVE
-             1 TO 90
-          ================================= */
+          /* NEXT 90 DAYS - CUMULATIVE */
 
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining
+                           BETWEEN 1 AND 90
+                      THEN 1
 
-                      WHEN
-                          DaysRemaining
-                          BETWEEN 1 AND 90
-
-                      THEN
-                          1
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Next90Days,
 
-
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining
+                           BETWEEN 1 AND 90
+                      THEN BirdRequirement
 
-                      WHEN
-                          DaysRemaining
-                          BETWEEN 1 AND 90
-
-                      THEN
-                          BirdRequirement
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Next90DaysBirds,
 
-
-          /* =================================
-             FUTURE > 90 DAYS
-          ================================= */
+          /* FUTURE */
 
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining > 90
+                      THEN 1
 
-                      WHEN
-                          DaysRemaining > 90
-
-                      THEN
-                          1
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS Future,
 
-
           ISNULL(
               SUM(
                   CASE
+                      WHEN DaysRemaining > 90
+                      THEN BirdRequirement
 
-                      WHEN
-                          DaysRemaining > 90
-
-                      THEN
-                          BirdRequirement
-
-                      ELSE
-                          0
-
+                      ELSE 0
                   END
               ),
               0
           ) AS FutureBirds
 
-      FROM
-          ForecastData;
+      FROM ForecastData;
     `;
 
     const currentKpiResult = await currentKpiRequest.query(currentKpiQuery);
 
-    const kpi = currentKpiResult.recordset[0];
+    const kpi = currentKpiResult.recordset?.[0] || {};
 
     // =====================================================
     // SELECTED RANGE SUMMARY
@@ -2910,7 +2786,6 @@ exports.getReplacementForecast = async (req, res) => {
       ${flockCTE}
 
       SELECT
-
           COUNT(*)
               AS TotalFlocks,
 
@@ -2925,8 +2800,7 @@ exports.getReplacementForecast = async (req, res) => {
               0
           ) AS ExpectedBirds
 
-      FROM
-          FlockData
+      FROM FlockData
 
       WHERE
           ${selectedRangeWhere};
@@ -2935,7 +2809,7 @@ exports.getReplacementForecast = async (req, res) => {
     const selectedSummaryResult =
       await selectedSummaryRequest.query(selectedSummaryQuery);
 
-    const selectedSummary = selectedSummaryResult.recordset[0];
+    const selectedSummary = selectedSummaryResult.recordset?.[0] || {};
 
     // =====================================================
     // MONTHLY REPLACEMENT DEMAND
@@ -2948,7 +2822,6 @@ exports.getReplacementForecast = async (req, res) => {
       ${flockCTE}
 
       SELECT
-
           YEAR(
               ExpectedReplacementDate
           ) AS YearNumber,
@@ -2976,14 +2849,12 @@ exports.getReplacementForecast = async (req, res) => {
               0
           ) AS Birds
 
-      FROM
-          FlockData
+      FROM FlockData
 
       WHERE
           ${selectedRangeWhere}
 
       GROUP BY
-
           YEAR(
               ExpectedReplacementDate
           ),
@@ -2998,9 +2869,7 @@ exports.getReplacementForecast = async (req, res) => {
           )
 
       ORDER BY
-
           YearNumber,
-
           MonthNumber;
     `;
 
@@ -3017,7 +2886,6 @@ exports.getReplacementForecast = async (req, res) => {
       ${flockCTE}
 
       SELECT
-
           ISNULL(
               Hatchery,
               'Unknown'
@@ -3037,8 +2905,7 @@ exports.getReplacementForecast = async (req, res) => {
               0
           ) AS Birds
 
-      FROM
-          FlockData
+      FROM FlockData
 
       WHERE
           ${selectedRangeWhere}
@@ -3063,7 +2930,6 @@ exports.getReplacementForecast = async (req, res) => {
       ${flockCTE}
 
       SELECT
-
           ISNULL(
               Area,
               'Unknown'
@@ -3083,8 +2949,7 @@ exports.getReplacementForecast = async (req, res) => {
               0
           ) AS Birds
 
-      FROM
-          FlockData
+      FROM FlockData
 
       WHERE
           ${selectedRangeWhere}
@@ -3109,46 +2974,33 @@ exports.getReplacementForecast = async (req, res) => {
       ${flockCTE}
 
       SELECT
-
           FarmerName,
-
           AccCode,
-
           Area,
-
           Hatchery,
-
           LastPlacementDate,
-
           ExpectedReplacementDate,
-
           BirdRequirement,
 
           DATEDIFF(
               DAY,
 
               CAST(
-                  GETDATE()
-                  AS DATE
+                  GETDATE() AS DATE
               ),
 
               ExpectedReplacementDate
           ) AS DaysRemaining
 
-      FROM
-          FlockData
+      FROM FlockData
 
       WHERE
           ${selectedRangeWhere}
 
       ORDER BY
-
           ExpectedReplacementDate ASC,
-
           FarmerName ASC,
-
           LastPlacementDate ASC,
-
           Hatchery ASC;
     `;
 
@@ -3167,10 +3019,13 @@ exports.getReplacementForecast = async (req, res) => {
 
       calculationRule: "Every Flock HatchDate + 80 Weeks",
 
+      // Important:
+      // parsedFromDate / parsedToDate are already
+      // YYYY-MM-DD strings.
+      // Do NOT call formatDateOnly() on them.
       forecastRange: {
-        from: formatDateOnly(parsedFromDate),
-
-        to: formatDateOnly(parsedToDate),
+        from: parsedFromDate,
+        to: parsedToDate,
       },
 
       sessionRange:
@@ -3197,10 +3052,12 @@ exports.getReplacementForecast = async (req, res) => {
       },
 
       // ===================================================
-      // MANAGEMENT KPI
+      // KPI
       // ===================================================
 
       kpis: {
+        // Selected replacement range
+
         totalFarmers: Number(selectedSummary.TotalCustomers || 0),
 
         totalCustomers: Number(selectedSummary.TotalCustomers || 0),
@@ -3208,6 +3065,8 @@ exports.getReplacementForecast = async (req, res) => {
         totalFlocks: Number(selectedSummary.TotalFlocks || 0),
 
         expectedBirds: Number(selectedSummary.ExpectedBirds || 0),
+
+        // Current-date management KPIs
 
         overdue: Number(kpi.Overdue || 0),
 
@@ -3239,7 +3098,7 @@ exports.getReplacementForecast = async (req, res) => {
       // ===================================================
 
       charts: {
-        monthlyForecast: monthlyResult.recordset.map((item) => ({
+        monthlyForecast: (monthlyResult.recordset || []).map((item) => ({
           YearNumber: Number(item.YearNumber),
 
           MonthNumber: Number(item.MonthNumber),
@@ -3253,7 +3112,7 @@ exports.getReplacementForecast = async (req, res) => {
           Birds: Number(item.Birds || 0),
         })),
 
-        hatcheryDemand: hatcheryResult.recordset.map((item) => ({
+        hatcheryDemand: (hatcheryResult.recordset || []).map((item) => ({
           Hatchery: item.Hatchery,
 
           Farmers: Number(item.Farmers || 0),
@@ -3263,7 +3122,7 @@ exports.getReplacementForecast = async (req, res) => {
           Birds: Number(item.Birds || 0),
         })),
 
-        areaForecast: areaResult.recordset.map((item) => ({
+        areaForecast: (areaResult.recordset || []).map((item) => ({
           Area: item.Area,
 
           Farmers: Number(item.Farmers || 0),
@@ -3273,7 +3132,7 @@ exports.getReplacementForecast = async (req, res) => {
           Birds: Number(item.Birds || 0),
         })),
 
-        replacementCalendar: calendarResult.recordset.map((item) => ({
+        replacementCalendar: (calendarResult.recordset || []).map((item) => ({
           farmer: item.FarmerName,
 
           code: item.AccCode,
@@ -3282,9 +3141,9 @@ exports.getReplacementForecast = async (req, res) => {
 
           hatchery: item.Hatchery,
 
-          lastPlacement: item.LastPlacementDate,
+          lastPlacement: formatDateOnly(item.LastPlacementDate),
 
-          date: item.ExpectedReplacementDate,
+          date: formatDateOnly(item.ExpectedReplacementDate),
 
           daysLeft: Number(item.DaysRemaining || 0),
 
@@ -3330,6 +3189,10 @@ exports.getReplacementForecast = async (req, res) => {
         next90Days: Number(kpi.Next90Days || 0),
 
         next90DaysBirds: Number(kpi.Next90DaysBirds || 0),
+
+        future: Number(kpi.Future || 0),
+
+        futureBirds: Number(kpi.FutureBirds || 0),
       },
 
       // ===================================================
