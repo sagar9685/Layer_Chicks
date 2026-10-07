@@ -35,6 +35,9 @@ const Sechdule = () => {
   const [scheduleQty, setScheduleQty] = useState("");
   const [scheduleHatchery, setScheduleHatchery] = useState("");
   const [layerCustomerList, setLayerCustomerList] = useState([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerSearching, setCustomerSearching] = useState(false);
+  const [showCustomerResults, setShowCustomerResults] = useState(false);
   const [editId, setEditId] = useState(null);
   // Existing states ke saath add karein
   const [scheduledDays, setScheduledDays] = useState([]);
@@ -106,14 +109,50 @@ const Sechdule = () => {
     }
   };
 
-  const fetchCustomers = async () => {
-    const res = await axios.get(
-      "http://137.97.174.50:5007/api/layer-customers",
-    );
-    console.log("Customer List aayegi:", res.data); // ✅ yaha
+  useEffect(() => {
+    if (!showAddSchedule) return;
 
-    setLayerCustomerList(res.data);
-  };
+    const searchText = customerSearch.trim();
+
+    if (searchText.length < 2) {
+      setLayerCustomerList([]);
+      setCustomerSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        setCustomerSearching(true);
+
+        const res = await axios.get(
+          "http://137.97.174.50:5007/api/layer-customers",
+          {
+            params: {
+              search: searchText,
+            },
+            signal: controller.signal,
+          },
+        );
+
+        setLayerCustomerList(res.data || []);
+      } catch (err) {
+        if (err.name !== "CanceledError" && err.code !== "ERR_CANCELED") {
+          console.error("Customer search error:", err);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCustomerSearching(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [customerSearch, showAddSchedule]);
 
   const saveProduction = async () => {
     if (!hatchDate || !loadingDate || !expectedQty || !hatchries) {
@@ -269,16 +308,23 @@ const Sechdule = () => {
   };
 
   const handleEdit = async (item) => {
-    await fetchCustomers(); // 👈 IMPORTANT
-    await fetchHatcheries(); // 👈 IMPORTANT
+    await fetchHatcheries();
 
-    console.log("EDIT ITEM:", item);
+    const code = item.Cust_Code || item.CustomerCode || "";
+    const name = item.Cust_Name || item.CustomerName || "";
 
     setEditId(item.Id);
-    setScheduleCustCode(item.Cust_Code || item.CustomerCode);
-    setScheduleCust(item.Cust_Name || item.CustomerName);
-    setScheduleQty(item.Qty || item.QtyNet);
-    setScheduleHatchery(item.Hatchery);
+
+    setScheduleCustCode(code);
+    setScheduleCust(name);
+
+    setCustomerSearch(name);
+
+    setScheduleQty(item.Qty || item.QtyNet || "");
+    setScheduleHatchery(item.Hatchery || "");
+
+    setLayerCustomerList([]);
+    setShowCustomerResults(false);
 
     setShowAddSchedule(true);
   };
@@ -813,7 +859,7 @@ const Sechdule = () => {
               <div className="original-customer-table mb-4">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <h6 className="fw-bold text-dark mb-0">
-                    📋 Tentative customer as 80 weeks
+                    📋 Tentative customer as 87 weeks
                   </h6>
 
                   <div className="d-flex align-items-center gap-2">
@@ -1012,8 +1058,19 @@ const Sechdule = () => {
                   <button
                     className="btn btn-sm btn-success"
                     onClick={() => {
-                      fetchCustomers();
+                      setEditId(null);
+
+                      setScheduleCust("");
+                      setScheduleCustCode("");
+                      setScheduleQty("");
+                      setScheduleHatchery("");
+
+                      setCustomerSearch("");
+                      setLayerCustomerList([]);
+                      setShowCustomerResults(false);
+
                       fetchHatcheries();
+
                       setShowAddSchedule(true);
                     }}
                   >
@@ -1489,41 +1546,134 @@ const Sechdule = () => {
               <h4>Schedule Customer</h4>
               <button onClick={() => setShowAddSchedule(false)}>×</button>
             </div>
-
             <div className="modal-body">
-              <div className="mb-2">
+              <div className="mb-2" style={{ position: "relative" }}>
                 <label>Customer</label>
 
-                <select
+                <input
+                  type="text"
                   className="form-control"
-                  value={scheduleCustCode}
+                  placeholder="Search customer name or code..."
+                  autoComplete="off"
+                  value={customerSearch}
                   onChange={(e) => {
-                    const code = e.target.value;
+                    setCustomerSearch(e.target.value);
 
-                    const cust = layerCustomerList.find(
-                      (c) => c.CustomerCode === code || c.Cust_Code === code,
-                    );
+                    // Customer dobara search kar raha hai,
+                    // purani selection clear kar do
+                    setScheduleCust("");
+                    setScheduleCustCode("");
 
-                    console.log("Selected Code:", code); // ✅ ADD THIS
-                    console.log("Customer Found:", cust); // ✅ ADD THIS
-                    setScheduleCustCode(code);
-                    setScheduleCust(
-                      cust?.CustomerName || cust?.Cust_Name || "",
-                    );
+                    setShowCustomerResults(true);
                   }}
-                >
-                  <option value="">Select Customer</option>
+                  onFocus={() => {
+                    setShowCustomerResults(true);
+                  }}
+                />
 
-                  {layerCustomerList.map((x) => (
-                    <option
-                      key={x.CustomerCode || x.Cust_Code}
-                      value={x.CustomerCode || x.Cust_Code}
-                    >
-                      {x.CustomerName || x.Cust_Name} ---
-                      {x.CustomerCode}
-                    </option>
-                  ))}
-                </select>
+                {customerSearching && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "37px",
+                      fontSize: "12px",
+                      color: "#64748b",
+                    }}
+                  >
+                    Searching...
+                  </div>
+                )}
+
+                {showCustomerResults && customerSearch.trim().length >= 2 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      zIndex: 9999,
+                      background: "#fff",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "6px",
+                      marginTop: "4px",
+                      maxHeight: "250px",
+                      overflowY: "auto",
+                      boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    {!customerSearching && layerCustomerList.length === 0 && (
+                      <div
+                        style={{
+                          padding: "12px",
+                          color: "#64748b",
+                          fontSize: "13px",
+                        }}
+                      >
+                        No customer found
+                      </div>
+                    )}
+
+                    {layerCustomerList.map((customer) => (
+                      <div
+                        key={customer.CustomerCode}
+                        onClick={() => {
+                          setScheduleCustCode(customer.CustomerCode);
+                          setScheduleCust(customer.CustomerName);
+
+                          setCustomerSearch(customer.CustomerName);
+
+                          setLayerCustomerList([]);
+                          setShowCustomerResults(false);
+                        }}
+                        style={{
+                          padding: "9px 12px",
+                          borderBottom: "1px solid #f1f5f9",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#f8fafc";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "#fff";
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: "600",
+                            fontSize: "13px",
+                            color: "#1e293b",
+                          }}
+                        >
+                          {customer.CustomerName}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#64748b",
+                            marginTop: "2px",
+                          }}
+                        >
+                          {customer.CustomerCode}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {scheduleCustCode && (
+                  <div
+                    style={{
+                      marginTop: "5px",
+                      fontSize: "12px",
+                      color: "#059669",
+                      fontWeight: "600",
+                    }}
+                  >
+                    ✓ Selected: {scheduleCust} ({scheduleCustCode})
+                  </div>
+                )}
               </div>
 
               <div className="mb-2">

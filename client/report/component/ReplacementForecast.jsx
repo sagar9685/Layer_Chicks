@@ -555,7 +555,7 @@ export default function ReplacementForecast() {
         "Area",
 
         "Hatchery",
-
+        "Flock Hatch Date",
         "Last Placement",
 
         "Replacement Date",
@@ -577,6 +577,7 @@ export default function ReplacementForecast() {
         row.hatchery,
 
         formatDate(row.lastPlacement),
+        formatDate(row.latestHatchDate),
 
         formatDate(row.expectedDate),
 
@@ -650,7 +651,7 @@ export default function ReplacementForecast() {
 
             <p>
               Customer replacement forecast for every flock based on hatch date
-              + 80 weeks
+              + 87 weeks
             </p>
           </div>
 
@@ -1123,7 +1124,7 @@ export default function ReplacementForecast() {
               <div>
                 <h2>Customer Replacement Schedule</h2>
 
-                <p>Replacement date: each flock hatch date + 80 weeks</p>
+                <p>Replacement date: each flock hatch date + 87 weeks</p>
               </div>
 
               <span className={styles.badgeCounter}>
@@ -1151,6 +1152,8 @@ export default function ReplacementForecast() {
 
                     <th>Flock Hatch Date</th>
 
+                    <th>Latest Hatch Date</th>
+
                     <th>Replacement Date</th>
 
                     <th>Birds</th>
@@ -1166,7 +1169,7 @@ export default function ReplacementForecast() {
                 <tbody>
                   {replacements.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className={styles.noData}>
+                      <td colSpan="11" className={styles.noData}>
                         No customer has replacement between{" "}
                         {formatDate(fromDate)} and {formatDate(toDate)}
                       </td>
@@ -1194,6 +1197,10 @@ export default function ReplacementForecast() {
                         <td>{row.hatchery}</td>
 
                         <td>{formatDate(row.lastPlacement)}</td>
+
+                        <td className={styles.latestHatchDate}>
+                          {formatDate(row.latestHatchDate)}
+                        </td>
 
                         <td className={styles.fwBold}>
                           {formatDate(row.expectedDate)}

@@ -57,6 +57,13 @@ const LayerChicksSessionReport = () => {
   const [sessions, setSessions] = useState([]);
 
   // =========================================================
+  // AREA FILTER
+  // =========================================================
+
+  const [areas, setAreas] = useState([]);
+  const [selectedArea, setSelectedArea] = useState("");
+
+  // =========================================================
   // CUSTOMER FILTER
   // =========================================================
 
@@ -88,12 +95,13 @@ const LayerChicksSessionReport = () => {
   const customerRef = useRef(null);
   const sessionRef = useRef(null);
 
-  // Cancel previous report request
   const reportAbortControllerRef = useRef(null);
 
   const [selectedSessionDetail, setSelectedSessionDetail] = useState(null);
-
   const [showSessionDetailModal, setShowSessionDetailModal] = useState(false);
+
+  const [customerPurchaseSummary, setCustomerPurchaseSummary] = useState(null);
+  const [customerSummaryLoading, setCustomerSummaryLoading] = useState(false);
 
   const handleViewSessionDetails = (item) => {
     if (item.PurchaseStatus !== "PURCHASED") {
@@ -101,7 +109,6 @@ const LayerChicksSessionReport = () => {
     }
 
     setSelectedSessionDetail(item);
-
     setShowSessionDetailModal(true);
   };
 
@@ -110,6 +117,17 @@ const LayerChicksSessionReport = () => {
   // =========================================================
 
   const normalizeCustomerName = (value) => {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase();
+  };
+
+  // =========================================================
+  // NORMALIZE AREA
+  // =========================================================
+
+  const normalizeArea = (value) => {
     return String(value || "")
       .trim()
       .replace(/\s+/g, " ")
@@ -134,14 +152,43 @@ const LayerChicksSessionReport = () => {
       const sessionData = sessionResponse.data?.data || [];
 
       // =====================================================
-      // UNIQUE CUSTOMER NAME
+      // UNIQUE AREAS
+      // =====================================================
+
+      const areaMap = new Map();
+
+      rawCustomerData.forEach((customer) => {
+        const area = String(customer.Area || "")
+          .trim()
+          .replace(/\s+/g, " ");
+
+        if (!area) {
+          return;
+        }
+
+        const normalizedArea = normalizeArea(area);
+
+        if (!areaMap.has(normalizedArea)) {
+          areaMap.set(normalizedArea, area);
+        }
+      });
+
+      const uniqueAreas = Array.from(areaMap.values()).sort((a, b) =>
+        a.localeCompare(b, undefined, {
+          sensitivity: "base",
+        }),
+      );
+
+      setAreas(uniqueAreas);
+
+      // =====================================================
+      // UNIQUE CUSTOMER
       //
-      // Example:
-      // "ABC FARM"
-      // "abc farm"
-      // " ABC FARM "
+      // IMPORTANT:
+      // Customer + Area combination unique rakha hai.
       //
-      // All treated as one customer.
+      // Agar same customer name different area me ho,
+      // to dono records preserve honge.
       // =====================================================
 
       const customerMap = new Map();
@@ -151,16 +198,24 @@ const LayerChicksSessionReport = () => {
           .trim()
           .replace(/\s+/g, " ");
 
+        const area = String(customer.Area || "")
+          .trim()
+          .replace(/\s+/g, " ");
+
         if (!customerName) {
           return;
         }
 
         const normalizedName = normalizeCustomerName(customerName);
+        const normalizedCustomerArea = normalizeArea(area);
 
-        if (!customerMap.has(normalizedName)) {
-          customerMap.set(normalizedName, {
+        const customerKey = `${normalizedName}__${normalizedCustomerArea}`;
+
+        if (!customerMap.has(customerKey)) {
+          customerMap.set(customerKey, {
             CustomerName: customerName,
             CustomerCode: customer.CustomerCode || "",
+            Area: area,
           });
         }
       });
@@ -184,8 +239,12 @@ const LayerChicksSessionReport = () => {
 
       setSelectedSessions(allSessions);
 
-      // First report load
+      // =====================================================
+      // FIRST REPORT LOAD
+      // =====================================================
+
       await fetchReport({
+        selectedArea: "",
         selectedCustomer: null,
         selectedSessions: allSessions,
         status: "",
@@ -236,17 +295,26 @@ const LayerChicksSessionReport = () => {
       const currentStatus =
         override.status !== undefined ? override.status : status;
 
+      const currentArea =
+        override.selectedArea !== undefined
+          ? override.selectedArea
+          : selectedArea;
+
       const currentPage = override.page !== undefined ? override.page : page;
 
       const currentPageSize =
         override.pageSize !== undefined ? override.pageSize : pageSize;
 
       // =====================================================
+      // AREA
+      // =====================================================
+
+      if (currentArea) {
+        params.area = currentArea.trim();
+      }
+
+      // =====================================================
       // CUSTOMER
-      //
-      // CustomerName is being sent instead of CustomerCode.
-      // This is important when the same customer has multiple
-      // codes but should be treated as one customer by name.
       // =====================================================
 
       if (customer?.CustomerName) {
@@ -275,6 +343,8 @@ const LayerChicksSessionReport = () => {
 
       params.page = currentPage;
       params.limit = currentPageSize;
+
+      console.log("Layer Chicks Report Params:", params);
 
       const response = await axios.get(`${BASE_URL}/session-report`, {
         params,
@@ -327,6 +397,122 @@ const LayerChicksSessionReport = () => {
   };
 
   // =========================================================
+  // CUSTOMER OVERALL PURCHASE SUMMARY
+  // ALL SESSIONS INCLUDED
+  // =========================================================
+  const fetchCustomerPurchaseSummary = async (customer, area = "") => {
+    if (!customer?.CustomerName) {
+      setCustomerPurchaseSummary(null);
+      return;
+    }
+
+    try {
+      setCustomerSummaryLoading(true);
+
+      const allSessions = sessions.map((item) => item.Session).filter(Boolean);
+
+      const params = {
+        customerName: customer.CustomerName.trim(),
+        page: 1,
+        limit: 200,
+      };
+
+      // Same customer different area me ho sakta hai
+      if (area) {
+        params.area = area.trim();
+      } else if (customer.Area) {
+        params.area = customer.Area.trim();
+      }
+
+      // IMPORTANT:
+      // Current selected session nahi,
+      // master ke ALL sessions bhej rahe hain.
+      if (allSessions.length > 0) {
+        params.sessions = allSessions.join(",");
+      }
+
+      // Sirf purchased rows chahiye
+      params.status = "PURCHASED";
+
+      const response = await axios.get(`${BASE_URL}/session-report`, {
+        params,
+      });
+
+      if (!response.data?.success) {
+        setCustomerPurchaseSummary(null);
+        return;
+      }
+
+      const records = response.data?.data || [];
+
+      if (records.length === 0) {
+        setCustomerPurchaseSummary({
+          CustomerName: customer.CustomerName,
+          CustomerCode: customer.CustomerCode || "",
+          Area: customer.Area || area || "",
+          FirstPurchaseDate: null,
+          LastPurchaseDate: null,
+          PurchasedSessions: 0,
+          TotalQty: 0,
+        });
+
+        return;
+      }
+
+      // -----------------------------------------------------
+      // Find overall first purchase date
+      // -----------------------------------------------------
+      const firstDates = records
+        .map((item) => item.FirstPurchaseDate)
+        .filter(Boolean)
+        .map((date) => new Date(date))
+        .filter((date) => !Number.isNaN(date.getTime()));
+
+      // -----------------------------------------------------
+      // Find overall last purchase date
+      // -----------------------------------------------------
+      const lastDates = records
+        .map((item) => item.LastPurchaseDate)
+        .filter(Boolean)
+        .map((date) => new Date(date))
+        .filter((date) => !Number.isNaN(date.getTime()));
+
+      const firstPurchaseDate =
+        firstDates.length > 0
+          ? new Date(Math.min(...firstDates.map((date) => date.getTime())))
+          : null;
+
+      const lastPurchaseDate =
+        lastDates.length > 0
+          ? new Date(Math.max(...lastDates.map((date) => date.getTime())))
+          : null;
+
+      const purchasedSessions = records.filter(
+        (item) => item.PurchaseStatus === "PURCHASED",
+      ).length;
+
+      const totalQty = records.reduce(
+        (total, item) => total + Number(item.TotalQty || 0),
+        0,
+      );
+
+      setCustomerPurchaseSummary({
+        CustomerName: customer.CustomerName,
+        CustomerCode: customer.CustomerCode || records[0]?.CustomerCode || "",
+        Area: customer.Area || area || "",
+        FirstPurchaseDate: firstPurchaseDate,
+        LastPurchaseDate: lastPurchaseDate,
+        PurchasedSessions: purchasedSessions,
+        TotalQty: totalQty,
+      });
+    } catch (error) {
+      console.error("Customer Purchase Summary Error:", error);
+      setCustomerPurchaseSummary(null);
+    } finally {
+      setCustomerSummaryLoading(false);
+    }
+  };
+  // =========================================================
   // INITIAL LOAD
   // =========================================================
 
@@ -338,35 +524,30 @@ const LayerChicksSessionReport = () => {
         reportAbortControllerRef.current.abort();
       }
     };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // =========================================================
   // CUSTOMER SEARCH
-  //
-  // CASE INSENSITIVE
-  //
-  // Sharma
-  // SHARMA
-  // sharma
-  // sHaRmA
-  //
-  // All will work.
+  // AREA + CUSTOMER NAME FILTER
   // =========================================================
 
   const filteredCustomers = useMemo(() => {
     const search = normalizeCustomerName(customerSearch);
-
-    if (!search) {
-      return customers;
-    }
+    const area = normalizeArea(selectedArea);
 
     return customers.filter((customer) => {
       const customerName = normalizeCustomerName(customer.CustomerName);
+      const customerArea = normalizeArea(customer.Area);
 
-      return customerName.includes(search);
+      const matchesSearch = !search || customerName.includes(search);
+
+      const matchesArea = !area || customerArea === area;
+
+      return matchesSearch && matchesArea;
     });
-  }, [customers, customerSearch]);
+  }, [customers, customerSearch, selectedArea]);
 
   // =========================================================
   // CUSTOMER SELECT
@@ -376,6 +557,7 @@ const LayerChicksSessionReport = () => {
     setSelectedCustomer(customer);
     setCustomerSearch(customer.CustomerName || "");
     setShowCustomerDropdown(false);
+    fetchCustomerPurchaseSummary(customer, selectedArea || customer.Area || "");
   };
 
   // =========================================================
@@ -386,6 +568,23 @@ const LayerChicksSessionReport = () => {
     setSelectedCustomer(null);
     setCustomerSearch("");
     setShowCustomerDropdown(false);
+    setCustomerPurchaseSummary(null);
+  };
+
+  // =========================================================
+  // AREA CHANGE
+  // =========================================================
+
+  const handleAreaChange = (e) => {
+    const area = e.target.value;
+
+    setSelectedArea(area);
+
+    // Area change hone par old customer remove hoga
+    setSelectedCustomer(null);
+    setCustomerSearch("");
+    setShowCustomerDropdown(false);
+    setCustomerPurchaseSummary(null);
   };
 
   // =========================================================
@@ -429,7 +628,12 @@ const LayerChicksSessionReport = () => {
     setPage(1);
 
     fetchReport({
+      selectedArea,
+      selectedCustomer,
+      selectedSessions,
+      status,
       page: 1,
+      pageSize,
     });
   };
 
@@ -440,14 +644,16 @@ const LayerChicksSessionReport = () => {
   const handleClearFilters = () => {
     const allSessions = sessions.map((item) => item.Session).filter(Boolean);
 
+    setSelectedArea("");
     setSelectedCustomer(null);
+    setCustomerPurchaseSummary(null);
     setCustomerSearch("");
     setSelectedSessions(allSessions);
     setStatus("");
-
     setPage(1);
 
     fetchReport({
+      selectedArea: "",
       selectedCustomer: null,
       selectedSessions: allSessions,
       status: "",
@@ -471,7 +677,12 @@ const LayerChicksSessionReport = () => {
     setPage(newPage);
 
     fetchReport({
+      selectedArea,
+      selectedCustomer,
+      selectedSessions,
+      status,
       page: newPage,
+      pageSize,
     });
 
     window.scrollTo({
@@ -491,6 +702,10 @@ const LayerChicksSessionReport = () => {
     setPage(1);
 
     fetchReport({
+      selectedArea,
+      selectedCustomer,
+      selectedSessions,
+      status,
       page: 1,
       pageSize: newPageSize,
     });
@@ -664,11 +879,27 @@ const LayerChicksSessionReport = () => {
         </div>
 
         {/* =====================================================
-            FILTER
+            FILTERS
         ===================================================== */}
 
         <form className={styles.filterCard} onSubmit={handleSearch}>
           <div className={styles.filterGrid}>
+            {/* ================= AREA ================= */}
+
+            <div className={styles.formGroup}>
+              <label>Area</label>
+
+              <select value={selectedArea} onChange={handleAreaChange}>
+                <option value="">All Areas</option>
+
+                {areas.map((area) => (
+                  <option key={area} value={area}>
+                    {area}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* ================= CUSTOMER ================= */}
 
             <div className={styles.formGroup} ref={customerRef}>
@@ -677,15 +908,17 @@ const LayerChicksSessionReport = () => {
               <div className={styles.customerSearchWrapper}>
                 <input
                   type="text"
-                  placeholder="Search customer name..."
+                  placeholder={
+                    selectedArea
+                      ? `Search ${selectedArea} customer...`
+                      : "Search customer name..."
+                  }
                   value={customerSearch}
                   autoComplete="off"
                   onFocus={() => setShowCustomerDropdown(true)}
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
 
-                    // Typed value means previously selected
-                    // customer should no longer remain selected.
                     setSelectedCustomer(null);
 
                     setShowCustomerDropdown(true);
@@ -706,7 +939,8 @@ const LayerChicksSessionReport = () => {
                 {showCustomerDropdown && (
                   <div className={styles.customerDropdown}>
                     <div className={styles.dropdownTitle}>
-                      Customers
+                      {selectedArea ? `${selectedArea} Customers` : "Customers"}
+
                       <span>
                         {filteredCustomers.length > 100
                           ? `${filteredCustomers.length} found - First 100 shown`
@@ -719,7 +953,7 @@ const LayerChicksSessionReport = () => {
                         Loading customers...
                       </div>
                     ) : filteredCustomers.length > 0 ? (
-                      filteredCustomers.slice(0, 100).map((customer) => {
+                      filteredCustomers.slice(0, 100).map((customer, index) => {
                         const currentCustomerName = normalizeCustomerName(
                           customer.CustomerName,
                         );
@@ -730,12 +964,16 @@ const LayerChicksSessionReport = () => {
 
                         const isSelected =
                           selectedCustomerName &&
-                          selectedCustomerName === currentCustomerName;
+                          selectedCustomerName === currentCustomerName &&
+                          normalizeArea(selectedCustomer?.Area) ===
+                            normalizeArea(customer.Area);
 
                         return (
                           <button
                             type="button"
-                            key={currentCustomerName}
+                            key={`${currentCustomerName}-${normalizeArea(
+                              customer.Area,
+                            )}-${index}`}
                             className={
                               isSelected
                                 ? styles.customerOptionActive
@@ -751,7 +989,9 @@ const LayerChicksSessionReport = () => {
                       })
                     ) : (
                       <div className={styles.dropdownMessage}>
-                        No customer found
+                        {selectedArea
+                          ? `No customer found in ${selectedArea}`
+                          : "No customer found"}
                       </div>
                     )}
                   </div>
@@ -829,9 +1069,7 @@ const LayerChicksSessionReport = () => {
                 onChange={(e) => setStatus(e.target.value)}
               >
                 <option value="">All</option>
-
                 <option value="PURCHASED">Purchased</option>
-
                 <option value="NOT PURCHASED">Not Purchased</option>
               </select>
             </div>
@@ -862,12 +1100,29 @@ const LayerChicksSessionReport = () => {
               ACTIVE FILTERS
           ================================================= */}
 
-          {(selectedCustomer ||
+          {(selectedArea ||
+            selectedCustomer ||
             (sessions.length > 0 &&
               selectedSessions.length !==
                 sessions.map((item) => item.Session).filter(Boolean)
                   .length)) && (
             <div className={styles.selectedFilters}>
+              {selectedArea && (
+                <span className={styles.filterChip}>
+                  <strong>Area:</strong> {selectedArea}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedArea("");
+                      setSelectedCustomer(null);
+                      setCustomerSearch("");
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
               {selectedCustomer && (
                 <span className={styles.filterChip}>
                   <strong>Customer:</strong> {selectedCustomer.CustomerName}
@@ -897,46 +1152,6 @@ const LayerChicksSessionReport = () => {
         </form>
 
         {/* =====================================================
-            SUMMARY
-        ===================================================== */}
-
-        {/* <div className={styles.summaryGrid}>
-          <div className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>Total Records</span>
-
-            <strong>{formatNumber(summary.totalRecords)}</strong>
-          </div>
-
-          <div className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>Purchased</span>
-
-            <strong className={styles.greenText}>
-              {formatNumber(summary.purchasedSessions)}
-            </strong>
-          </div>
-
-          <div className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>Not Purchased</span>
-
-            <strong className={styles.redText}>
-              {formatNumber(summary.notPurchasedSessions)}
-            </strong>
-          </div>
-
-          <div className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>Total Chicks</span>
-
-            <strong>{formatNumber(summary.totalQty)}</strong>
-          </div>
-
-          <div className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>Total Amount</span>
-
-            <strong>{formatCurrency(summary.totalAmount)}</strong>
-          </div>
-        </div> */}
-
-        {/* =====================================================
             ERROR
         ===================================================== */}
 
@@ -945,6 +1160,114 @@ const LayerChicksSessionReport = () => {
         {/* =====================================================
             TABLE
         ===================================================== */}
+
+        {/* =====================================================
+    CUSTOMER PURCHASE OVERVIEW
+    ALL SESSIONS INCLUDED
+===================================================== */}
+        {selectedCustomer && (
+          <div className={styles.customerOverviewCard}>
+            <div className={styles.customerOverviewHeader}>
+              <div>
+                <span className={styles.overviewEyebrow}>
+                  Customer Purchase Overview
+                </span>
+
+                <h2>{selectedCustomer.CustomerName || "-"}</h2>
+
+                <div className={styles.customerMeta}>
+                  {selectedCustomer.CustomerCode && (
+                    <span>
+                      Code: <strong>{selectedCustomer.CustomerCode}</strong>
+                    </span>
+                  )}
+
+                  {(selectedCustomer.Area || selectedArea) && (
+                    <span>
+                      Area:{" "}
+                      <strong>{selectedCustomer.Area || selectedArea}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.allSessionBadge}>All Sessions</div>
+            </div>
+
+            {customerSummaryLoading ? (
+              <div className={styles.customerSummaryLoading}>
+                <div className={styles.spinner} />
+                <span>Loading customer purchase history...</span>
+              </div>
+            ) : customerPurchaseSummary ? (
+              <div className={styles.customerOverviewGrid}>
+                {/* FIRST PURCHASE */}
+                <div className={styles.customerStatCard}>
+                  <div className={styles.statIcon}>↘</div>
+
+                  <div className={styles.statContent}>
+                    <span className={styles.statLabel}>First Purchase</span>
+
+                    <strong className={styles.statValue}>
+                      {formatDate(customerPurchaseSummary.FirstPurchaseDate)}
+                    </strong>
+
+                    <small>Earliest purchase across all sessions</small>
+                  </div>
+                </div>
+
+                {/* LAST PURCHASE */}
+                <div className={styles.customerStatCard}>
+                  <div className={styles.statIcon}>↗</div>
+
+                  <div className={styles.statContent}>
+                    <span className={styles.statLabel}>Last Purchase</span>
+
+                    <strong className={styles.statValue}>
+                      {formatDate(customerPurchaseSummary.LastPurchaseDate)}
+                    </strong>
+
+                    <small>Most recent purchase across all sessions</small>
+                  </div>
+                </div>
+
+                {/* PURCHASED SESSIONS */}
+                <div className={styles.customerStatCard}>
+                  <div className={styles.statIcon}>✓</div>
+
+                  <div className={styles.statContent}>
+                    <span className={styles.statLabel}>Purchased Sessions</span>
+
+                    <strong className={styles.statValue}>
+                      {formatNumber(customerPurchaseSummary.PurchasedSessions)}
+                    </strong>
+
+                    <small>Sessions with Layer Chicks purchase</small>
+                  </div>
+                </div>
+
+                {/* TOTAL QUANTITY */}
+                <div className={styles.customerStatCard}>
+                  <div className={styles.statIcon}>🐣</div>
+
+                  <div className={styles.statContent}>
+                    <span className={styles.statLabel}>Lifetime Quantity</span>
+
+                    <strong className={styles.statValue}>
+                      {formatNumber(customerPurchaseSummary.TotalQty)}
+                    </strong>
+
+                    <small>Total Layer Chicks purchased</small>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.noPurchaseHistory}>
+                No purchase history available for this customer.
+              </div>
+            )}
+          </div>
+        )}
 
         <div className={styles.tableCard}>
           <div className={styles.tableHeader}>
@@ -963,8 +1286,6 @@ const LayerChicksSessionReport = () => {
                 )}
               </p>
             </div>
-
-            {/* ROW COUNT */}
 
             <div className={styles.tableHeaderActions}>
               <label>Rows:</label>
@@ -988,23 +1309,14 @@ const LayerChicksSessionReport = () => {
               <thead>
                 <tr>
                   <th>#</th>
-
                   <th>Customer Code</th>
-
                   <th>Customer Name</th>
-
                   <th>Session</th>
 
                   <th className={styles.textRight}>Qty</th>
 
-                  {/* <th className={styles.textRight}>Amount</th>
-
-                  <th className={styles.textCenter}>Bills</th> */}
-
                   <th>First Purchase</th>
-
                   <th>Last Purchase</th>
-
                   <th>Status</th>
                   <th>Details</th>
                 </tr>
@@ -1013,7 +1325,7 @@ const LayerChicksSessionReport = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="10">
+                    <td colSpan="9">
                       <div className={styles.loadingState}>
                         <div className={styles.spinner} />
 
@@ -1060,14 +1372,6 @@ const LayerChicksSessionReport = () => {
                           {formatNumber(item.TotalQty)}
                         </td>
 
-                        {/* <td className={styles.textRight}>
-                          {formatCurrency(item.TotalAmount)}
-                        </td>
-
-                        <td className={styles.textCenter}>
-                          {formatNumber(item.TotalBills)}
-                        </td> */}
-
                         <td>{formatDate(item.FirstPurchaseDate)}</td>
 
                         <td>{formatDate(item.LastPurchaseDate)}</td>
@@ -1083,6 +1387,7 @@ const LayerChicksSessionReport = () => {
                             {purchased ? "Purchased" : "Not Purchased"}
                           </span>
                         </td>
+
                         <td>
                           {purchased ? (
                             <button
@@ -1101,14 +1406,15 @@ const LayerChicksSessionReport = () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan="10">
+                    <td colSpan="9">
                       <div className={styles.emptyState}>
                         <div className={styles.emptyIcon}>🐣</div>
 
                         <h3>No Layer Chicks Data Found</h3>
 
                         <p>
-                          Change customer, session or purchase status filters.
+                          Change area, customer, session or purchase status
+                          filters.
                         </p>
                       </div>
                     </td>
@@ -1133,8 +1439,6 @@ const LayerChicksSessionReport = () => {
               </div>
 
               <div className={styles.paginationControls}>
-                {/* FIRST */}
-
                 <button
                   type="button"
                   className={styles.pageNavigationButton}
@@ -1144,8 +1448,6 @@ const LayerChicksSessionReport = () => {
                   First
                 </button>
 
-                {/* PREVIOUS */}
-
                 <button
                   type="button"
                   className={styles.pageNavigationButton}
@@ -1154,8 +1456,6 @@ const LayerChicksSessionReport = () => {
                 >
                   ‹ Prev
                 </button>
-
-                {/* FIRST PAGE + DOTS */}
 
                 {visiblePages.length > 0 && visiblePages[0] > 1 && (
                   <>
@@ -1173,8 +1473,6 @@ const LayerChicksSessionReport = () => {
                   </>
                 )}
 
-                {/* PAGE NUMBERS */}
-
                 {visiblePages.map((pageNumber) => (
                   <button
                     type="button"
@@ -1190,8 +1488,6 @@ const LayerChicksSessionReport = () => {
                     {pageNumber}
                   </button>
                 ))}
-
-                {/* LAST PAGE + DOTS */}
 
                 {visiblePages.length > 0 &&
                   visiblePages[visiblePages.length - 1] <
@@ -1212,8 +1508,6 @@ const LayerChicksSessionReport = () => {
                     </>
                   )}
 
-                {/* NEXT */}
-
                 <button
                   type="button"
                   className={styles.pageNavigationButton}
@@ -1222,8 +1516,6 @@ const LayerChicksSessionReport = () => {
                 >
                   Next ›
                 </button>
-
-                {/* LAST */}
 
                 <button
                   type="button"
@@ -1245,12 +1537,12 @@ const LayerChicksSessionReport = () => {
             </div>
           )}
         </div>
+
         <LayerChicksSessionDetailModal
           isOpen={showSessionDetailModal}
           customer={selectedSessionDetail}
           onClose={() => {
             setShowSessionDetailModal(false);
-
             setSelectedSessionDetail(null);
           }}
         />

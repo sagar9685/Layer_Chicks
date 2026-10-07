@@ -281,24 +281,61 @@ exports.getLayerCustomers = async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request().query(`
-      SELECT 
-        account_code AS CustomerCode,
-        account_head_name AS CustomerName
+    const search = String(req.query.search || "").trim();
+
+    // 2 characters se kam par database hit karne ki zarurat nahi
+    if (search.length < 2) {
+      return res.json([]);
+    }
+
+    const request = pool.request();
+
+    request.input("search", sql.VarChar(100), search);
+
+    const result = await request.query(`
+      SELECT TOP 20
+        LTRIM(RTRIM(account_code)) AS CustomerCode,
+
+        LTRIM(RTRIM(
+          REPLACE(account_head_name, '*', '')
+        )) AS CustomerName
+
       FROM ACC_HEAD_PHHA_2627
-      WHERE group_name='Customer'
-      AND account_code IN (
-        SELECT DISTINCT AccCode 
-        FROM PrintData 
-        WHERE ProductName='Layer Chicks'
-      )
-      ORDER BY account_head_name
+
+      WHERE group_name = 'Customer'
+
+        AND NULLIF(
+          LTRIM(RTRIM(REPLACE(account_head_name, '*', ''))),
+          ''
+        ) IS NOT NULL
+
+        AND (
+          REPLACE(account_head_name, '*', '') LIKE '%' + @search + '%'
+          OR account_code LIKE '%' + @search + '%'
+        )
+
+      ORDER BY
+        CASE
+          WHEN LTRIM(RTRIM(REPLACE(account_head_name, '*', '')))
+               LIKE @search + '%'
+          THEN 0
+
+          WHEN account_code LIKE @search + '%'
+          THEN 1
+
+          ELSE 2
+        END,
+
+        LTRIM(RTRIM(REPLACE(account_head_name, '*', '')))
     `);
 
-    res.json(result.recordset);
+    return res.json(result.recordset);
   } catch (err) {
-    console.log(err);
-    res.status(500).send("Error fetching customers");
+    console.error("getLayerCustomers Error:", err);
+
+    return res.status(500).json({
+      message: "Error fetching customers",
+    });
   }
 };
 
@@ -320,17 +357,33 @@ exports.getDueReport = async (req, res) => {
         p.AccCode AS CustomerCode,
         a.phone AS PhoneNo,
 
+        -- =========================================
+        -- DUE MONTH = HATCH DATE + 87 WEEKS
+        -- =========================================
         FORMAT(
-          DATEADD(WEEK, 80, p.HatchDate),
+          DATEADD(
+            WEEK,
+            87,
+            p.HatchDate
+          ),
           'yyyy-MM'
         ) AS DueMonth,
 
+        -- =========================================
+        -- DUE DATE = HATCH DATE + 87 WEEKS
+        -- =========================================
         CAST(
-          DATEADD(WEEK, 80, p.HatchDate)
+          DATEADD(
+            WEEK,
+            87,
+            p.HatchDate
+          )
           AS DATE
         ) AS DueDate,
 
-        SUM(ISNULL(p.Qty, 0)) AS TotalQty
+        SUM(
+          ISNULL(p.Qty, 0)
+        ) AS TotalQty
 
       FROM PrintData p
 
@@ -339,13 +392,22 @@ exports.getDueReport = async (req, res) => {
         AND a.group_name = 'customer'
 
       WHERE
-        p.ProductName = 'Layer Chicks'
+        UPPER(
+          LTRIM(
+            RTRIM(
+              ISNULL(p.ProductName, '')
+            )
+          )
+        ) = 'LAYER CHICKS'
 
         AND p.Cmp_id = 'PHHA'
 
-        AND ISNULL(
-          p.Vou_type,
-          ''
+        AND UPPER(
+          LTRIM(
+            RTRIM(
+              ISNULL(p.Vou_type, '')
+            )
+          )
         ) <> 'PURCHASE(GST)'
 
         AND p.AccCode IS NOT NULL
@@ -356,12 +418,23 @@ exports.getDueReport = async (req, res) => {
 
         AND p.HatchDate IS NOT NULL
 
-        AND DATEADD(
-          WEEK,
-          80,
-          p.HatchDate
+        -- =========================================
+        -- SELECT ONLY CUSTOMERS WHOSE
+        -- 87-WEEK REPLACEMENT DATE FALLS
+        -- INSIDE SELECTED RANGE
+        -- =========================================
+        AND CAST(
+          DATEADD(
+            WEEK,
+            87,
+            p.HatchDate
+          )
+          AS DATE
         )
-        BETWEEN ${fromDate} AND ${toDate}
+        BETWEEN
+          CAST(${fromDate} AS DATE)
+          AND
+          CAST(${toDate} AS DATE)
 
       GROUP BY
         p.AccName,
@@ -369,24 +442,33 @@ exports.getDueReport = async (req, res) => {
         a.phone,
 
         FORMAT(
-          DATEADD(WEEK, 80, p.HatchDate),
+          DATEADD(
+            WEEK,
+            87,
+            p.HatchDate
+          ),
           'yyyy-MM'
         ),
 
         CAST(
-          DATEADD(WEEK, 80, p.HatchDate)
+          DATEADD(
+            WEEK,
+            87,
+            p.HatchDate
+          )
           AS DATE
         )
 
       ORDER BY
-        DueDate ASC;
+        DueDate ASC,
+        p.AccName ASC;
     `;
 
-    res.status(200).json(result.recordset);
+    return res.status(200).json(result.recordset);
   } catch (err) {
     console.error("Due Report Error:", err);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: err.message,
     });
   }
@@ -797,6 +879,7 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       customerName,
       sessions,
       status,
+      area,
       page = 1,
       limit = 50,
     } = req.query;
@@ -828,6 +911,16 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       "status",
       sql.VarChar,
       status ? status.trim().toUpperCase() : null,
+    );
+
+    // =========================================================
+    // AREA FILTER
+    // =========================================================
+
+    request.input(
+      "area",
+      sql.VarChar,
+      area && area.trim() ? area.trim() : null,
     );
 
     request.input("offset", sql.Int, offset);
@@ -871,21 +964,43 @@ exports.getLayerChicksSessionReport = async (req, res) => {
 
       /* =====================================================
          1. CUSTOMERS
+         AREA FILTER IS APPLIED HERE
       ===================================================== */
 
       ;WITH LayerCustomers AS
       (
           SELECT DISTINCT
-              AccCode,
-              AccName
+              LTRIM(RTRIM(AccCode)) AS AccCode,
+              LTRIM(RTRIM(AccName)) AS AccName,
+              LTRIM(RTRIM(ISNULL(Station, ''))) AS Area
+
           FROM PrintData
-          WHERE ProductName = 'Layer Chicks'
-            AND Cmp_id = 'PHHA'
-            AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+
+          WHERE ProductName
+                COLLATE SQL_Latin1_General_CP1_CI_AS = 'Layer Chicks'
+
+            AND Cmp_id
+                COLLATE SQL_Latin1_General_CP1_CI_AS = 'PHHA'
+
+            AND ISNULL(Vou_type, '')
+                COLLATE SQL_Latin1_General_CP1_CI_AS <> 'PURCHASE(GST)'
+
             AND AccCode IS NOT NULL
             AND LTRIM(RTRIM(AccCode)) <> ''
+
             AND AccName IS NOT NULL
             AND LTRIM(RTRIM(AccName)) <> ''
+
+            AND
+            (
+                @area IS NULL
+
+                OR LTRIM(RTRIM(ISNULL(Station, '')))
+                   COLLATE SQL_Latin1_General_CP1_CI_AS
+                   =
+                   LTRIM(RTRIM(@area))
+                   COLLATE SQL_Latin1_General_CP1_CI_AS
+            )
       ),
 
       /* =====================================================
@@ -895,24 +1010,37 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       LayerSessions AS
       (
           SELECT DISTINCT
-              Session
+              LTRIM(RTRIM(Session)) AS Session
+
           FROM PrintData
-          WHERE ProductName = 'Layer Chicks'
-            AND Cmp_id = 'PHHA'
-            AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+
+          WHERE ProductName
+                COLLATE SQL_Latin1_General_CP1_CI_AS = 'Layer Chicks'
+
+            AND Cmp_id
+                COLLATE SQL_Latin1_General_CP1_CI_AS = 'PHHA'
+
+            AND ISNULL(Vou_type, '')
+                COLLATE SQL_Latin1_General_CP1_CI_AS <> 'PURCHASE(GST)'
+
             AND Session IS NOT NULL
             AND LTRIM(RTRIM(Session)) <> ''
       ),
 
       /* =====================================================
          3. ACTUAL SALES
+
+         IMPORTANT:
+         AREA is also included here so quantity from another
+         station does not get mixed into selected area.
       ===================================================== */
 
       LayerSales AS
       (
           SELECT
-              AccCode,
-              Session,
+              LTRIM(RTRIM(AccCode)) AS AccCode,
+              LTRIM(RTRIM(Session)) AS Session,
+              LTRIM(RTRIM(ISNULL(Station, ''))) AS Area,
 
               SUM(ISNULL(Qty, 0)) AS TotalQty,
               SUM(ISNULL(Amount, 0)) AS TotalAmount,
@@ -924,13 +1052,30 @@ exports.getLayerChicksSessionReport = async (req, res) => {
 
           FROM PrintData
 
-          WHERE ProductName = 'Layer Chicks'
-            AND Cmp_id = 'PHHA'
-            AND ISNULL(Vou_type, '') <> 'PURCHASE(GST)'
+          WHERE ProductName
+                COLLATE SQL_Latin1_General_CP1_CI_AS = 'Layer Chicks'
+
+            AND Cmp_id
+                COLLATE SQL_Latin1_General_CP1_CI_AS = 'PHHA'
+
+            AND ISNULL(Vou_type, '')
+                COLLATE SQL_Latin1_General_CP1_CI_AS <> 'PURCHASE(GST)'
+
+            AND
+            (
+                @area IS NULL
+
+                OR LTRIM(RTRIM(ISNULL(Station, '')))
+                   COLLATE SQL_Latin1_General_CP1_CI_AS
+                   =
+                   LTRIM(RTRIM(@area))
+                   COLLATE SQL_Latin1_General_CP1_CI_AS
+            )
 
           GROUP BY
-              AccCode,
-              Session
+              LTRIM(RTRIM(AccCode)),
+              LTRIM(RTRIM(Session)),
+              LTRIM(RTRIM(ISNULL(Station, '')))
       )
 
       /* =====================================================
@@ -940,6 +1085,7 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       SELECT
           C.AccCode AS CustomerCode,
           C.AccName AS CustomerName,
+          C.Area,
           S.Session,
 
           ISNULL(L.TotalQty, 0) AS TotalQty,
@@ -964,7 +1110,12 @@ exports.getLayerChicksSessionReport = async (req, res) => {
 
       LEFT JOIN LayerSales L
           ON L.AccCode = C.AccCode
-         AND L.Session = S.Session;
+         AND L.Session = S.Session
+         AND L.Area
+             COLLATE SQL_Latin1_General_CP1_CI_AS
+             =
+             C.Area
+             COLLATE SQL_Latin1_General_CP1_CI_AS;
 
 
       /* =====================================================
@@ -974,6 +1125,7 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       SELECT
           CustomerCode,
           CustomerName,
+          Area,
           Session,
           TotalQty,
           TotalAmount,
@@ -987,13 +1139,20 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       WHERE
           (
               @customerCode IS NULL
-              OR CustomerCode = @customerCode
+              OR CustomerCode
+                 COLLATE SQL_Latin1_General_CP1_CI_AS
+                 =
+                 @customerCode
+                 COLLATE SQL_Latin1_General_CP1_CI_AS
           )
 
           AND
           (
               @customerName IS NULL
-              OR CustomerName LIKE '%' + @customerName + '%'
+
+              OR CustomerName
+                 COLLATE SQL_Latin1_General_CP1_CI_AS
+                 LIKE '%' + @customerName + '%'
           )
 
           ${sessionCondition}
@@ -1044,13 +1203,20 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       WHERE
           (
               @customerCode IS NULL
-              OR CustomerCode = @customerCode
+              OR CustomerCode
+                 COLLATE SQL_Latin1_General_CP1_CI_AS
+                 =
+                 @customerCode
+                 COLLATE SQL_Latin1_General_CP1_CI_AS
           )
 
           AND
           (
               @customerName IS NULL
-              OR CustomerName LIKE '%' + @customerName + '%'
+
+              OR CustomerName
+                 COLLATE SQL_Latin1_General_CP1_CI_AS
+                 LIKE '%' + @customerName + '%'
           )
 
           ${sessionCondition}
@@ -1097,6 +1263,7 @@ exports.getLayerChicksSessionReport = async (req, res) => {
       product: "Layer Chicks",
 
       filters: {
+        area: area || null,
         customerCode: customerCode || null,
         customerName: customerName || null,
         sessions: selectedSessions,
@@ -1107,6 +1274,7 @@ exports.getLayerChicksSessionReport = async (req, res) => {
         page: pageNumber,
         limit: pageSize,
         totalRecords,
+
         totalPages: totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 0,
       },
 
@@ -1157,14 +1325,19 @@ exports.getLayerChicksCustomers = async (req, res) => {
     const result = await request.query(`
       SELECT DISTINCT
           LTRIM(RTRIM(AccCode)) AS CustomerCode,
-          LTRIM(RTRIM(AccName)) AS CustomerName
+          LTRIM(RTRIM(AccName)) AS CustomerName,
+
+          -- ✅ Station ko Area naam se frontend me bhej rahe hain
+          LTRIM(RTRIM(ISNULL(Station, ''))) AS Area
 
       FROM PrintData
 
       WHERE ProductName COLLATE SQL_Latin1_General_CP1_CI_AS = 'Layer Chicks'
+
         AND Cmp_id COLLATE SQL_Latin1_General_CP1_CI_AS = 'PHHA'
-        AND ISNULL(Vou_type, '') COLLATE SQL_Latin1_General_CP1_CI_AS 
-            <> 'PURCHASE(GST)'
+
+        AND ISNULL(Vou_type, '')
+            COLLATE SQL_Latin1_General_CP1_CI_AS <> 'PURCHASE(GST)'
 
         AND AccCode IS NOT NULL
         AND LTRIM(RTRIM(AccCode)) <> ''
@@ -1180,6 +1353,11 @@ exports.getLayerChicksCustomers = async (req, res) => {
              LIKE '%' + @search + '%'
 
           OR LTRIM(RTRIM(AccCode))
+             COLLATE SQL_Latin1_General_CP1_CI_AS
+             LIKE '%' + @search + '%'
+
+          -- ✅ Area/Station se bhi search ho sake
+          OR LTRIM(RTRIM(ISNULL(Station, '')))
              COLLATE SQL_Latin1_General_CP1_CI_AS
              LIKE '%' + @search + '%'
         )

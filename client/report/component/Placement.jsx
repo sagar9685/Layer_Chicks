@@ -9,7 +9,9 @@ import AdminSideBar from "./AdminSideBar";
 import styles from "./PlacementDashboard.module.css";
 import * as XLSX from "xlsx";
 
-const API_URL = "http://137.97.174.50:5007/api/placement";
+const API_URL =
+  import.meta.env.VITE_PLACEMENT_API_URL ||
+  "http://137.97.174.50:5007/api/placement";
 
 const PlacementDashboard = () => {
   const [activeTab, setActiveTab] = useState("Placement");
@@ -57,6 +59,11 @@ const PlacementDashboard = () => {
   const [area, setArea] = useState("");
 
   const [status, setStatus] = useState("");
+
+  // Default current FY/session. User can select any session returned by API.
+  const [session, setSession] = useState("2627");
+
+  const [availableSessions, setAvailableSessions] = useState([]);
 
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
@@ -208,6 +215,10 @@ const PlacementDashboard = () => {
         params.append("status", status);
       }
 
+      if (session) {
+        params.append("session", session);
+      }
+
       params.append("page", 1);
 
       params.append("limit", 10000);
@@ -232,6 +243,8 @@ const PlacementDashboard = () => {
         "Farmer Name": item.farmer,
 
         "Customer Code": item.code,
+
+        Session: item.session,
 
         Area: item.area,
 
@@ -304,7 +317,11 @@ const PlacementDashboard = () => {
   // FETCH DASHBOARD DATA
   // ============================================================
 
-  const fetchPlacementDashboard = async (page = 1, limit = rowsPerPage) => {
+  const fetchPlacementDashboard = async (
+    page = 1,
+    limit = rowsPerPage,
+    signal,
+  ) => {
     try {
       setLoading(true);
 
@@ -340,11 +357,17 @@ const PlacementDashboard = () => {
         params.append("status", status);
       }
 
+      if (session) {
+        params.append("session", session);
+      }
+
       params.append("page", page);
 
       params.append("limit", limit);
 
-      const response = await fetch(`${API_URL}?${params.toString()}`);
+      const response = await fetch(`${API_URL}?${params.toString()}`, {
+        signal,
+      });
 
       if (!response.ok) {
         throw new Error("Failed to fetch placement data");
@@ -361,6 +384,8 @@ const PlacementDashboard = () => {
       setAllPlacements(data.placements || []);
 
       setMetrics(data.metrics || {});
+
+      setAvailableSessions(data.availableSessions || []);
 
       setCharts({
         monthlyTrend: data.charts?.monthlyTrend || [],
@@ -384,6 +409,8 @@ const PlacementDashboard = () => {
         },
       );
     } catch (err) {
+      if (err?.name === "AbortError") return;
+
       console.error("Placement Dashboard Error:", err);
 
       setError(err.message);
@@ -393,24 +420,33 @@ const PlacementDashboard = () => {
   };
 
   // ============================================================
-  // INITIAL API CALL
+  // DASHBOARD LOAD / FILTER EFFECT
+  // One request only on initial load.
+  // Search is lightly debounced and stale requests are cancelled.
   // ============================================================
 
   useEffect(() => {
-    fetchPlacementDashboard(1, rowsPerPage);
-  }, []);
+    const controller = new AbortController();
 
-  // ============================================================
-  // FILTER EFFECT
-  // ============================================================
-
-  useEffect(() => {
     const delay = setTimeout(() => {
-      fetchPlacementDashboard(1, rowsPerPage);
-    }, 500);
+      fetchPlacementDashboard(1, rowsPerPage, controller.signal);
+    }, 300);
 
-    return () => clearTimeout(delay);
-  }, [search, fromDate, toDate, hatchery, farmer, area, status]);
+    return () => {
+      clearTimeout(delay);
+      controller.abort();
+    };
+  }, [
+    search,
+    fromDate,
+    toDate,
+    hatchery,
+    farmer,
+    area,
+    status,
+    session,
+    rowsPerPage,
+  ]);
 
   // ============================================================
   // CHECKBOX HANDLERS
@@ -463,6 +499,8 @@ const PlacementDashboard = () => {
 
     setStatus("");
 
+    setSession("2627");
+
     setSelectedRows([]);
 
     setSelectAll(false);
@@ -502,8 +540,6 @@ const PlacementDashboard = () => {
     setSelectAll(false);
 
     setSelectedPlacement(null);
-
-    fetchPlacementDashboard(1, newLimit);
   };
 
   // ============================================================
@@ -621,6 +657,25 @@ const PlacementDashboard = () => {
               {charts.areaDistribution.map((item, index) => (
                 <option key={index} value={item.Area}>
                   {item.Area}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* SESSION */}
+
+          <div className={styles.filterGroup}>
+            <label>Session</label>
+
+            <select
+              value={session}
+              onChange={(e) => setSession(e.target.value)}
+            >
+              <option value="">All Sessions</option>
+
+              {availableSessions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
                 </option>
               ))}
             </select>
@@ -814,6 +869,8 @@ const PlacementDashboard = () => {
 
                   <th>Customer Code</th>
 
+                  <th>Session</th>
+
                   <th>Area</th>
 
                   <th>Placement Date</th>
@@ -842,7 +899,7 @@ const PlacementDashboard = () => {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan="15"
+                      colSpan="16"
                       style={{
                         textAlign: "center",
                         padding: "40px",
@@ -856,7 +913,7 @@ const PlacementDashboard = () => {
                 ) : placements.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="15"
+                      colSpan="16"
                       style={{
                         textAlign: "center",
 
@@ -906,6 +963,10 @@ const PlacementDashboard = () => {
                       {/* CODE */}
 
                       <td className={styles.code}>{item.code}</td>
+
+                      {/* SESSION */}
+
+                      <td>{item.session || "-"}</td>
 
                       {/* AREA */}
 
@@ -1651,7 +1712,7 @@ const PlacementDashboard = () => {
                 <div className={styles.timelineContent}>
                   <strong>Next Replacement</strong>
 
-                  <p>80-week replacement cycle</p>
+                  <p>87-week replacement cycle</p>
                 </div>
 
                 <time>

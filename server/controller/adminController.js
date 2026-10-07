@@ -761,6 +761,10 @@ exports.getPlacementDashboard = async (req, res) => {
   try {
     const pool = await poolPromise;
 
+    // =========================================================
+    // QUERY PARAMETERS
+    // =========================================================
+
     const {
       search = "",
       fromDate = "",
@@ -769,23 +773,24 @@ exports.getPlacementDashboard = async (req, res) => {
       farmer = "",
       area = "",
       status = "",
+      session = "",
       page = 1,
       limit = 10,
     } = req.query;
 
-    // =====================================================
+    // =========================================================
     // PAGINATION
-    // =====================================================
+    // =========================================================
 
     const pageNumber = Math.max(Number(page) || 1, 1);
 
-    const pageLimit = Math.max(Number(limit) || 10, 1);
+    const pageLimit = Math.min(Math.max(Number(limit) || 10, 1), 10000);
 
     const offset = (pageNumber - 1) * pageLimit;
 
-    // =====================================================
+    // =========================================================
     // FILTER VALUES
-    // =====================================================
+    // =========================================================
 
     const searchValue = String(search || "").trim();
 
@@ -797,9 +802,11 @@ exports.getPlacementDashboard = async (req, res) => {
 
     const statusValue = String(status || "").trim();
 
-    // =====================================================
+    const sessionValue = String(session || "").trim();
+
+    // =========================================================
     // MAIN REQUEST
-    // =====================================================
+    // =========================================================
 
     const request = pool.request();
 
@@ -817,140 +824,198 @@ exports.getPlacementDashboard = async (req, res) => {
 
     request.input("Status", sql.VarChar(50), statusValue);
 
+    request.input("Session", sql.VarChar(20), sessionValue);
+
     request.input("PageLimit", sql.Int, pageLimit);
 
     request.input("Offset", sql.Int, offset);
 
-    // =====================================================
-    // MAIN PLACEMENT QUERY
-    // =====================================================
+    // =========================================================
+    // ONE SQL BATCH
+    //
+    // FAST APPROACH:
+    // PrintData sirf ek baar group hoga
+    // aur uske baad same temp data:
+    // table + metrics + charts + sessions me reuse hoga
+    // =========================================================
 
-    const placementQuery = `
-      /* ==================================================
+    const dashboardQuery = `
+      SET NOCOUNT ON;
+
+      /* ========================================================
          STEP 1
-         ALL HISTORICAL PLACEMENTS
+         CREATE TEMP PLACEMENT DATA
+      ======================================================== */
 
-         IMPORTANT:
-         Do NOT restrict Session here.
+      IF OBJECT_ID('tempdb..#PlacementGroups') IS NOT NULL
+          DROP TABLE #PlacementGroups;
 
-         Previous replacement placement may belong
-         to older financial year.
-      ================================================== */
+      SELECT
 
-      WITH AllPlacementGroups AS
-      (
-          SELECT
-
-              CONCAT(
-                  'PLC-',
-                  CAST(BillNo AS VARCHAR(20)),
-                  '-',
-                  AccCode,
-                  '-',
-                  CONVERT(
-                      VARCHAR(8),
-                      CAST(HatchDate AS DATE),
-                      112
-                  )
-              ) AS PlacementID,
-
-              AccCode,
-
-              MAX(AccName)
-              AS AccName,
-
-              MAX(Station)
-              AS Station,
-
-              CAST(
-                  HatchDate AS DATE
-              ) AS PlacementDate,
-
-              MAX(PrdUnit)
-              AS PrdUnit,
-
-              BillNo,
-
-              MAX(Session)
-              AS PlacementSession,
-
-              SUM(
-                  ISNULL(Qty, 0)
-              ) AS PlacedBirds,
-
-              SUM(
-                  ISNULL(FreeQty, 0)
-              ) AS FreeBirds,
-
-              SUM(
-                  ISNULL(Mortality, 0)
-              ) AS Mortality
-
-          FROM PrintData
-
-          WHERE
-              ProductName = 'LAYER CHICKS'
-
-              AND Cmp_id = 'PHHA'
-
-              AND ISNULL(
-                  Vou_type,
-                  ''
-              ) <> 'PURCHASE(GST)'
-
-              AND AccCode IS NOT NULL
-
-              AND LTRIM(
-                  RTRIM(AccCode)
-              ) <> ''
-
-              AND HatchDate IS NOT NULL
-
-          GROUP BY
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
+          CONCAT(
+              'PLC-',
+              CAST(p.BillNo AS VARCHAR(20)),
+              '-',
+              p.AccCode,
+              '-',
+              CONVERT(
+                  VARCHAR(8),
+                  CAST(p.HatchDate AS DATE),
+                  112
               ),
+              '-',
+              ISNULL(
+                  NULLIF(
+                      LTRIM(RTRIM(p.Session)),
+                      ''
+                  ),
+                  'NA'
+              )
+          ) AS PlacementID,
 
-              BillNo
-      ),
+          p.AccCode,
 
-      /* ==================================================
-         STEP 2
-         CURRENT SESSION PLACEMENTS
+          MAX(p.AccName)
+          AS AccName,
 
-         Dashboard currently = FY 26-27
-      ================================================== */
+          MAX(p.Station)
+          AS Station,
 
-      CurrentSessionPlacement AS
+          CAST(
+              p.HatchDate AS DATE
+          )
+          AS PlacementDate,
+
+          MAX(p.PrdUnit)
+          AS PrdUnit,
+
+          p.BillNo,
+
+          NULLIF(
+              LTRIM(
+                  RTRIM(
+                      p.Session
+                  )
+              ),
+              ''
+          )
+          AS PlacementSession,
+
+          SUM(
+              ISNULL(
+                  p.Qty,
+                  0
+              )
+          )
+          AS PlacedBirds,
+
+          SUM(
+              ISNULL(
+                  p.FreeQty,
+                  0
+              )
+          )
+          AS FreeBirds,
+
+          SUM(
+              ISNULL(
+                  p.Mortality,
+                  0
+              )
+          )
+          AS Mortality
+
+      INTO #PlacementGroups
+
+      FROM PrintData p
+
+      WHERE
+
+          p.ProductName = 'LAYER CHICKS'
+
+          AND p.Cmp_id = 'PHHA'
+
+          AND ISNULL(
+              p.Vou_type,
+              ''
+          ) <> 'PURCHASE(GST)'
+
+          AND p.AccCode IS NOT NULL
+
+          AND LTRIM(
+              RTRIM(
+                  p.AccCode
+              )
+          ) <> ''
+
+          AND p.HatchDate IS NOT NULL
+
+      GROUP BY
+
+          p.AccCode,
+
+          CAST(
+              p.HatchDate AS DATE
+          ),
+
+          p.BillNo,
+
+          NULLIF(
+              LTRIM(
+                  RTRIM(
+                      p.Session
+                  )
+              ),
+              ''
+          );
+
+
+      /* ========================================================
+         TEMP INDEXES
+         Ye permanent database indexing nahi hai.
+         Sirf current request ki temp table ke liye hai.
+      ======================================================== */
+
+      CREATE NONCLUSTERED INDEX IX_TMP_Placement_AccDate
+      ON #PlacementGroups
+      (
+          AccCode,
+          PlacementDate
+      )
+      INCLUDE
+      (
+          PlacementSession,
+          PlacedBirds,
+          BillNo
+      );
+
+
+      CREATE NONCLUSTERED INDEX IX_TMP_Placement_SessionDate
+      ON #PlacementGroups
+      (
+          PlacementSession,
+          PlacementDate
+      );
+
+
+      /* ========================================================
+         RESULT SET 1
+         MAIN PLACEMENT TABLE
+      ======================================================== */
+
+      ;WITH SelectedSessionPlacement AS
       (
           SELECT
               *
 
-          FROM AllPlacementGroups
+          FROM #PlacementGroups
 
           WHERE
-              PlacementSession = '2627'
+
+              @Session = ''
+
+              OR PlacementSession = @Session
       ),
-
-      /* ==================================================
-         STEP 3
-         MAP CURRENT PLACEMENT AGAINST PREVIOUS DUE CYCLE
-
-         Find the latest OLD placement where:
-
-         old placement + 80 weeks <= current purchase date
-
-         Example:
-
-         Previous placement birds = 15,000
-         Expected replacement     = 22/09/2026
-         Actual current purchase  = 23/09/2026
-         Actual birds             = 12,000
-         Difference               = -3,000
-      ================================================== */
 
       ReplacementMapped AS
       (
@@ -965,6 +1030,10 @@ exports.getPlacementDashboard = async (req, res) => {
 
               replacementCycle.ExpectedReplacementBirds,
 
+              /* ==============================================
+                 ACTUAL REPLACEMENT DATE
+              ============================================== */
+
               CASE
 
                   WHEN
@@ -974,11 +1043,16 @@ exports.getPlacementDashboard = async (req, res) => {
                   THEN
                       currentPlacement.PlacementDate
 
-                  ELSE NULL
+                  ELSE
+                      NULL
 
               END
               AS ActualReplacementDate,
 
+              /* ==============================================
+                 ACTUAL REPLACEMENT BIRDS
+              ============================================== */
+
               CASE
 
                   WHEN
@@ -988,11 +1062,18 @@ exports.getPlacementDashboard = async (req, res) => {
                   THEN
                       currentPlacement.PlacedBirds
 
-                  ELSE NULL
+                  ELSE
+                      NULL
 
               END
               AS ActualReplacementBirds,
 
+              /* ==============================================
+                 DIFFERENCE
+
+                 Actual - Expected
+              ============================================== */
+
               CASE
 
                   WHEN
@@ -1000,14 +1081,24 @@ exports.getPlacementDashboard = async (req, res) => {
                       IS NOT NULL
 
                   THEN
+
                       currentPlacement.PlacedBirds
                       -
                       replacementCycle.ExpectedReplacementBirds
 
-                  ELSE NULL
+                  ELSE
+                      NULL
 
               END
               AS ReplacementDifference,
+
+              /* ==============================================
+                 DELAY DAYS
+
+                 Positive = late
+                 Negative = early
+                 0 = on time
+              ============================================== */
 
               CASE
 
@@ -1016,6 +1107,7 @@ exports.getPlacementDashboard = async (req, res) => {
                       IS NOT NULL
 
                   THEN
+
                       DATEDIFF(
                           DAY,
 
@@ -1024,12 +1116,13 @@ exports.getPlacementDashboard = async (req, res) => {
                           currentPlacement.PlacementDate
                       )
 
-                  ELSE NULL
+                  ELSE
+                      NULL
 
               END
               AS ReplacementDelayDays
 
-          FROM CurrentSessionPlacement currentPlacement
+          FROM SelectedSessionPlacement currentPlacement
 
           OUTER APPLY
           (
@@ -1038,10 +1131,15 @@ exports.getPlacementDashboard = async (req, res) => {
                   old.PlacementDate
                   AS PreviousPlacementDate,
 
+                  /* ==========================================
+                     EXPECTED REPLACEMENT
+                     PREVIOUS PLACEMENT + 87 WEEKS
+                  ========================================== */
+
                   CAST(
                       DATEADD(
                           WEEK,
-                          80,
+                          87,
                           old.PlacementDate
                       )
                       AS DATE
@@ -1051,7 +1149,7 @@ exports.getPlacementDashboard = async (req, res) => {
                   old.PlacedBirds
                   AS ExpectedReplacementBirds
 
-              FROM AllPlacementGroups old
+              FROM #PlacementGroups old
 
               WHERE
 
@@ -1059,17 +1157,15 @@ exports.getPlacementDashboard = async (req, res) => {
                   currentPlacement.AccCode
 
                   AND old.PlacementDate <
-                  currentPlacement.PlacementDate
+                      currentPlacement.PlacementDate
 
-                  /*
-                     Only take a placement whose
-                     replacement had actually become due
-                     by current purchase date
-                  */
+                  /* ==========================================
+                     OLD PLACEMENT MUST ALREADY BE DUE
+                  ========================================== */
 
                   AND DATEADD(
                       WEEK,
-                      80,
+                      87,
                       old.PlacementDate
                   )
                   <=
@@ -1079,7 +1175,7 @@ exports.getPlacementDashboard = async (req, res) => {
 
                   DATEADD(
                       WEEK,
-                      80,
+                      87,
                       old.PlacementDate
                   ) DESC,
 
@@ -1089,11 +1185,6 @@ exports.getPlacementDashboard = async (req, res) => {
 
           ) replacementCycle
       ),
-
-      /* ==================================================
-         STEP 4
-         PLACEMENT DATA
-      ================================================== */
 
       PlacementData AS
       (
@@ -1135,7 +1226,9 @@ exports.getPlacementDashboard = async (req, res) => {
 
               ReplacementDelayDays,
 
-              /* CURRENT AGE */
+              /* ==============================================
+                 CURRENT AGE
+              ============================================== */
 
               DATEDIFF(
                   DAY,
@@ -1149,15 +1242,15 @@ exports.getPlacementDashboard = async (req, res) => {
               )
               AS AgeDays,
 
-              /* =====================================
-                 NEXT REPLACEMENT OF CURRENT PLACEMENT
-                 EXACT 80 WEEKS
-              ===================================== */
+              /* ==============================================
+                 NEXT REPLACEMENT
+                 CURRENT PLACEMENT + 87 WEEKS
+              ============================================== */
 
               CAST(
                   DATEADD(
                       WEEK,
-                      80,
+                      87,
                       PlacementDate
                   )
                   AS DATE
@@ -1168,7 +1261,9 @@ exports.getPlacementDashboard = async (req, res) => {
 
           WHERE
 
-              /* SEARCH */
+              /* ==============================================
+                 SEARCH
+              ============================================== */
 
               (
                   @Search = ''
@@ -1191,9 +1286,14 @@ exports.getPlacementDashboard = async (req, res) => {
                   )
                   LIKE
                   '%' + @Search + '%'
+
+                  OR PlacementSession LIKE
+                     '%' + @Search + '%'
               )
 
-              /* PLACEMENT FROM DATE */
+              /* ==============================================
+                 FROM DATE
+              ============================================== */
 
               AND
               (
@@ -1203,7 +1303,9 @@ exports.getPlacementDashboard = async (req, res) => {
                      @FromDate
               )
 
-              /* PLACEMENT TO DATE */
+              /* ==============================================
+                 TO DATE
+              ============================================== */
 
               AND
               (
@@ -1213,7 +1315,9 @@ exports.getPlacementDashboard = async (req, res) => {
                      @ToDate
               )
 
-              /* HATCHERY */
+              /* ==============================================
+                 HATCHERY
+              ============================================== */
 
               AND
               (
@@ -1223,7 +1327,9 @@ exports.getPlacementDashboard = async (req, res) => {
                      @Hatchery
               )
 
-              /* FARMER */
+              /* ==============================================
+                 FARMER
+              ============================================== */
 
               AND
               (
@@ -1233,7 +1339,9 @@ exports.getPlacementDashboard = async (req, res) => {
                      @Farmer
               )
 
-              /* AREA */
+              /* ==============================================
+                 AREA
+              ============================================== */
 
               AND
               (
@@ -1243,11 +1351,6 @@ exports.getPlacementDashboard = async (req, res) => {
                      @Area
               )
       ),
-
-      /* ==================================================
-         STEP 5
-         STATUS
-      ================================================== */
 
       FinalData AS
       (
@@ -1264,7 +1367,8 @@ exports.getPlacementDashboard = async (req, res) => {
                           AS DATE
                       )
 
-                  THEN 'Completed'
+                  THEN
+                      'Completed'
 
                   WHEN
                       DATEDIFF(
@@ -1276,21 +1380,20 @@ exports.getPlacementDashboard = async (req, res) => {
                           ),
 
                           ExpectedReplacementDate
-                      ) <= 30
+                      )
+                      BETWEEN 0 AND 30
 
-                  THEN 'Replacement Soon'
+                  THEN
+                      'Replacement Soon'
 
-                  ELSE 'Active'
+                  ELSE
+                      'Active'
 
               END
               AS Status
 
           FROM PlacementData
       )
-
-      /* ==================================================
-         FINAL TABLE
-      ================================================== */
 
       SELECT
 
@@ -1314,172 +1417,17 @@ exports.getPlacementDashboard = async (req, res) => {
 
           BillNo DESC
 
-      OFFSET @Offset ROWS
+      OFFSET
+          @Offset ROWS
 
       FETCH NEXT
-          @PageLimit
-      ROWS ONLY;
-    `;
+          @PageLimit ROWS ONLY;
 
-    const result = await request.query(placementQuery);
 
-    const rows = result.recordset;
-
-    const totalRecords = rows.length > 0 ? Number(rows[0].TotalRecords) : 0;
-
-    // =====================================================
-    // PLACEMENT RESPONSE
-    // =====================================================
-
-    const placements = rows.map((item) => ({
-      id: item.PlacementID,
-
-      farmer: item.AccName,
-
-      code: item.AccCode,
-
-      area: item.Station,
-
-      date: item.PlacementDate,
-
-      hatchery: item.PrdUnit,
-
-      billNo: item.BillNo,
-
-      session: item.PlacementSession,
-
-      // =========================================
-      // CURRENT / ACTUAL PLACEMENT
-      // =========================================
-
-      birds: Number(item.PlacedBirds || 0),
-
-      actualPlacedBirds:
-        item.ActualReplacementBirds !== null
-          ? Number(item.ActualReplacementBirds)
-          : null,
-
-      freeBirds: Number(item.FreeBirds || 0),
-
-      mortality: Number(item.Mortality || 0),
-
-      // =========================================
-      // PREVIOUS REPLACEMENT CYCLE
-      // =========================================
-
-      previousPlacementDate: item.PreviousPlacementDate,
-
-      expectedReplacementDate: item.PreviousExpectedReplacementDate,
-
-      actualReplacementDate: item.ActualReplacementDate,
-
-      expectedReplacementBirds:
-        item.ExpectedReplacementBirds !== null
-          ? Number(item.ExpectedReplacementBirds)
-          : null,
-
-      replacementDifference:
-        item.ReplacementDifference !== null
-          ? Number(item.ReplacementDifference)
-          : null,
-
-      // shortage only
-      replacementShortage:
-        item.ReplacementDifference !== null &&
-        Number(item.ReplacementDifference) < 0
-          ? Math.abs(Number(item.ReplacementDifference))
-          : 0,
-
-      // extra only
-      replacementExtra:
-        item.ReplacementDifference !== null &&
-        Number(item.ReplacementDifference) > 0
-          ? Number(item.ReplacementDifference)
-          : 0,
-
-      replacementDelayDays:
-        item.ReplacementDelayDays !== null
-          ? Number(item.ReplacementDelayDays)
-          : null,
-
-      isActualReplacement: Boolean(item.ActualReplacementDate),
-
-      // =========================================
-      // NEXT REPLACEMENT
-      // =========================================
-
-      replacement: item.ExpectedReplacementDate,
-
-      nextReplacement: item.ExpectedReplacementDate,
-
-      replacementWeeks: 80,
-
-      age: Number(item.AgeDays || 0),
-
-      status: item.Status,
-    }));
-
-    // =====================================================
-    // METRICS
-    // =====================================================
-
-    const metricsRequest = pool.request();
-
-    const metricsQuery = `
-      WITH PlacementGroups AS
-      (
-          SELECT
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
-              )
-              AS PlacementDate,
-
-              BillNo,
-
-              MAX(
-                  PrdUnit
-              )
-              AS PrdUnit,
-
-              SUM(
-                  ISNULL(
-                      Qty,
-                      0
-                  )
-              )
-              AS BirdsPlaced
-
-          FROM PrintData
-
-          WHERE
-
-              ProductName =
-              'LAYER CHICKS'
-
-              AND Cmp_id =
-              'PHHA'
-
-              AND Session =
-              '2627'
-
-              AND ISNULL(
-                  Vou_type,
-                  ''
-              ) <> 'PURCHASE(GST)'
-
-          GROUP BY
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
-              ),
-
-              BillNo
-      )
+      /* ========================================================
+         RESULT SET 2
+         METRICS
+      ======================================================== */
 
       SELECT
 
@@ -1489,15 +1437,18 @@ exports.getPlacementDashboard = async (req, res) => {
               SUM(
                   CASE
 
-                      WHEN PlacementDate =
-                           CAST(
-                               GETDATE()
-                               AS DATE
-                           )
+                      WHEN
+                          PlacementDate =
+                          CAST(
+                              GETDATE()
+                              AS DATE
+                          )
 
-                      THEN 1
+                      THEN
+                          1
 
-                      ELSE 0
+                      ELSE
+                          0
 
                   END
               ),
@@ -1514,7 +1465,7 @@ exports.getPlacementDashboard = async (req, res) => {
 
           ISNULL(
               SUM(
-                  BirdsPlaced
+                  PlacedBirds
               ),
               0
           )
@@ -1523,16 +1474,17 @@ exports.getPlacementDashboard = async (req, res) => {
           /* ACTIVE HATCHERIES */
 
           COUNT(
-              DISTINCT PrdUnit
+              DISTINCT
+              PrdUnit
           )
           AS ActiveHatcheries,
 
-          /* AVG */
+          /* AVG BIRDS */
 
           ISNULL(
               AVG(
                   CAST(
-                      BirdsPlaced
+                      PlacedBirds
                       AS DECIMAL(18,2)
                   )
               ),
@@ -1540,30 +1492,36 @@ exports.getPlacementDashboard = async (req, res) => {
           )
           AS AvgBirdsPerPlacement,
 
-          /* =========================================
+          /* ==============================================
              UPCOMING REPLACEMENTS
              NEXT 30 DAYS
-          ========================================= */
+             CURRENT PLACEMENT + 87 WEEKS
+          ============================================== */
 
           ISNULL(
               SUM(
                   CASE
 
                       WHEN
+
                           CAST(
                               DATEADD(
                                   WEEK,
-                                  80,
+                                  87,
                                   PlacementDate
                               )
                               AS DATE
                           )
+
                           BETWEEN
+
                           CAST(
                               GETDATE()
                               AS DATE
                           )
+
                           AND
+
                           DATEADD(
                               DAY,
                               30,
@@ -1573,9 +1531,11 @@ exports.getPlacementDashboard = async (req, res) => {
                               )
                           )
 
-                      THEN 1
+                      THEN
+                          1
 
-                      ELSE 0
+                      ELSE
+                          0
 
                   END
               ),
@@ -1583,68 +1543,19 @@ exports.getPlacementDashboard = async (req, res) => {
           )
           AS UpcomingReplacements
 
-      FROM PlacementGroups;
-    `;
+      FROM #PlacementGroups
 
-    const metricsResult = await metricsRequest.query(metricsQuery);
+      WHERE
 
-    const metrics = metricsResult.recordset[0];
+          @Session = ''
 
-    // =====================================================
-    // MONTHLY TREND
-    // =====================================================
+          OR PlacementSession = @Session;
 
-    const monthlyRequest = pool.request();
 
-    const monthlyQuery = `
-      WITH PlacementGroups AS
-      (
-          SELECT
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
-              )
-              AS PlacementDate,
-
-              BillNo,
-
-              SUM(
-                  ISNULL(
-                      Qty,
-                      0
-                  )
-              )
-              AS BirdsPlaced
-
-          FROM PrintData
-
-          WHERE
-              ProductName =
-              'LAYER CHICKS'
-
-              AND Cmp_id =
-              'PHHA'
-
-              AND Session =
-              '2627'
-
-              AND ISNULL(
-                  Vou_type,
-                  ''
-              ) <> 'PURCHASE(GST)'
-
-          GROUP BY
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
-              ),
-
-              BillNo
-      )
+      /* ========================================================
+         RESULT SET 3
+         MONTHLY TREND
+      ======================================================== */
 
       SELECT
 
@@ -1663,11 +1574,17 @@ exports.getPlacementDashboard = async (req, res) => {
           AS Placements,
 
           SUM(
-              BirdsPlaced
+              PlacedBirds
           )
           AS Birds
 
-      FROM PlacementGroups
+      FROM #PlacementGroups
+
+      WHERE
+
+          @Session = ''
+
+          OR PlacementSession = @Session
 
       GROUP BY
 
@@ -1681,187 +1598,125 @@ exports.getPlacementDashboard = async (req, res) => {
           )
 
       ORDER BY
+
           MonthNumber;
-    `;
 
-    const monthlyResult = await monthlyRequest.query(monthlyQuery);
 
-    // =====================================================
-    // AREA DISTRIBUTION
-    // =====================================================
-
-    const areaRequest = pool.request();
-
-    const areaQuery = `
-      WITH PlacementGroups AS
-      (
-          SELECT
-
-              AccCode,
-
-              MAX(
-                  Station
-              ) AS Station,
-
-              CAST(
-                  HatchDate AS DATE
-              )
-              AS PlacementDate,
-
-              BillNo,
-
-              SUM(
-                  ISNULL(
-                      Qty,
-                      0
-                  )
-              )
-              AS BirdsPlaced
-
-          FROM PrintData
-
-          WHERE
-              ProductName =
-              'LAYER CHICKS'
-
-              AND Cmp_id =
-              'PHHA'
-
-              AND Session =
-              '2627'
-
-              AND ISNULL(
-                  Vou_type,
-                  ''
-              ) <> 'PURCHASE(GST)'
-
-          GROUP BY
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
-              ),
-
-              BillNo
-      )
+      /* ========================================================
+         RESULT SET 4
+         AREA DISTRIBUTION
+      ======================================================== */
 
       SELECT
 
-          Station
+          ISNULL(
+              NULLIF(
+                  LTRIM(
+                      RTRIM(
+                          Station
+                      )
+                  ),
+                  ''
+              ),
+              'Unknown'
+          )
           AS Area,
 
           COUNT(*)
           AS Placements,
 
           SUM(
-              BirdsPlaced
+              PlacedBirds
           )
           AS Birds
 
-      FROM PlacementGroups
+      FROM #PlacementGroups
+
+      WHERE
+
+          @Session = ''
+
+          OR PlacementSession = @Session
 
       GROUP BY
-          Station
+
+          ISNULL(
+              NULLIF(
+                  LTRIM(
+                      RTRIM(
+                          Station
+                      )
+                  ),
+                  ''
+              ),
+              'Unknown'
+          )
 
       ORDER BY
+
           Birds DESC;
-    `;
 
-    const areaResult = await areaRequest.query(areaQuery);
 
-    // =====================================================
-    // HATCHERY PERFORMANCE
-    // =====================================================
-
-    const hatcheryRequest = pool.request();
-
-    const hatcheryQuery = `
-      WITH PlacementGroups AS
-      (
-          SELECT
-
-              AccCode,
-
-              MAX(
-                  PrdUnit
-              )
-              AS PrdUnit,
-
-              CAST(
-                  HatchDate AS DATE
-              )
-              AS PlacementDate,
-
-              BillNo,
-
-              SUM(
-                  ISNULL(
-                      Qty,
-                      0
-                  )
-              )
-              AS BirdsPlaced
-
-          FROM PrintData
-
-          WHERE
-              ProductName =
-              'LAYER CHICKS'
-
-              AND Cmp_id =
-              'PHHA'
-
-              AND Session =
-              '2627'
-
-              AND ISNULL(
-                  Vou_type,
-                  ''
-              ) <> 'PURCHASE(GST)'
-
-          GROUP BY
-
-              AccCode,
-
-              CAST(
-                  HatchDate AS DATE
-              ),
-
-              BillNo
-      )
+      /* ========================================================
+         RESULT SET 5
+         HATCHERY PERFORMANCE
+      ======================================================== */
 
       SELECT
 
-          PrdUnit
+          ISNULL(
+              NULLIF(
+                  LTRIM(
+                      RTRIM(
+                          PrdUnit
+                      )
+                  ),
+                  ''
+              ),
+              'Unknown'
+          )
           AS Hatchery,
 
           COUNT(*)
           AS Placements,
 
           SUM(
-              BirdsPlaced
+              PlacedBirds
           )
           AS Birds
 
-      FROM PlacementGroups
+      FROM #PlacementGroups
+
+      WHERE
+
+          @Session = ''
+
+          OR PlacementSession = @Session
 
       GROUP BY
-          PrdUnit
+
+          ISNULL(
+              NULLIF(
+                  LTRIM(
+                      RTRIM(
+                          PrdUnit
+                      )
+                  ),
+                  ''
+              ),
+              'Unknown'
+          )
 
       ORDER BY
+
           Birds DESC;
-    `;
 
-    const hatcheryResult = await hatcheryRequest.query(hatcheryQuery);
 
-    // =====================================================
-    // TOP 5 FARMERS
-    // =====================================================
+      /* ========================================================
+         RESULT SET 6
+         TOP 5 FARMERS
+      ======================================================== */
 
-    const farmersRequest = pool.request();
-
-    const farmersQuery = `
       SELECT TOP 5
 
           AccCode,
@@ -1872,50 +1727,210 @@ exports.getPlacementDashboard = async (req, res) => {
           AS FarmerName,
 
           SUM(
-              ISNULL(
-                  Qty,
-                  0
-              )
+              PlacedBirds
           )
           AS BirdsPlaced
 
-      FROM PrintData
+      FROM #PlacementGroups
 
       WHERE
 
-          ProductName =
-          'LAYER CHICKS'
+          @Session = ''
 
-          AND Cmp_id =
-          'PHHA'
-
-          AND Session =
-          '2627'
-
-          AND ISNULL(
-              Vou_type,
-              ''
-          ) <> 'PURCHASE(GST)'
+          OR PlacementSession = @Session
 
       GROUP BY
+
           AccCode
 
       ORDER BY
+
           BirdsPlaced DESC;
+
+
+      /* ========================================================
+         RESULT SET 7
+         AVAILABLE SESSIONS
+      ======================================================== */
+
+      SELECT DISTINCT
+
+          PlacementSession
+          AS Session
+
+      FROM #PlacementGroups
+
+      WHERE
+
+          PlacementSession IS NOT NULL
+
+          AND LTRIM(
+              RTRIM(
+                  PlacementSession
+              )
+          ) <> ''
+
+      ORDER BY
+
+          Session DESC;
+
+
+      /* ========================================================
+         DROP TEMP TABLE
+      ======================================================== */
+
+      DROP TABLE #PlacementGroups;
     `;
 
-    const farmersResult = await farmersRequest.query(farmersQuery);
+    // =========================================================
+    // EXECUTE ONE SQL BATCH
+    // =========================================================
 
-    // =====================================================
+    const result = await request.query(dashboardQuery);
+
+    const recordsets = result.recordsets || [];
+
+    // =========================================================
+    // RESULT SETS
+    // =========================================================
+
+    const rows = recordsets[0] || [];
+
+    const metrics = (recordsets[1] || [])[0] || {};
+
+    const monthlyRows = recordsets[2] || [];
+
+    const areaRows = recordsets[3] || [];
+
+    const hatcheryRows = recordsets[4] || [];
+
+    const farmerRows = recordsets[5] || [];
+
+    const sessionRows = recordsets[6] || [];
+
+    // =========================================================
+    // TOTAL RECORDS
+    // =========================================================
+
+    const totalRecords =
+      rows.length > 0 ? Number(rows[0].TotalRecords || 0) : 0;
+
+    // =========================================================
+    // PLACEMENT RESPONSE
+    // =========================================================
+
+    const placements = rows.map((item) => ({
+      id: item.PlacementID,
+
+      farmer: item.AccName,
+
+      code: item.AccCode,
+
+      area: item.Station,
+
+      date: item.PlacementDate,
+
+      hatchery: item.PrdUnit,
+
+      billNo: item.BillNo,
+
+      session: item.PlacementSession,
+
+      // =====================================================
+      // CURRENT PLACEMENT
+      // =====================================================
+
+      birds: Number(item.PlacedBirds || 0),
+
+      freeBirds: Number(item.FreeBirds || 0),
+
+      mortality: Number(item.Mortality || 0),
+
+      // =====================================================
+      // PREVIOUS REPLACEMENT
+      // =====================================================
+
+      previousPlacementDate: item.PreviousPlacementDate,
+
+      expectedReplacementDate: item.PreviousExpectedReplacementDate,
+
+      actualReplacementDate: item.ActualReplacementDate,
+
+      expectedReplacementBirds:
+        item.ExpectedReplacementBirds !== null &&
+        item.ExpectedReplacementBirds !== undefined
+          ? Number(item.ExpectedReplacementBirds)
+          : null,
+
+      actualPlacedBirds:
+        item.ActualReplacementBirds !== null &&
+        item.ActualReplacementBirds !== undefined
+          ? Number(item.ActualReplacementBirds)
+          : null,
+
+      replacementDifference:
+        item.ReplacementDifference !== null &&
+        item.ReplacementDifference !== undefined
+          ? Number(item.ReplacementDifference)
+          : null,
+
+      replacementShortage:
+        item.ReplacementDifference !== null &&
+        Number(item.ReplacementDifference) < 0
+          ? Math.abs(Number(item.ReplacementDifference))
+          : 0,
+
+      replacementExtra:
+        item.ReplacementDifference !== null &&
+        Number(item.ReplacementDifference) > 0
+          ? Number(item.ReplacementDifference)
+          : 0,
+
+      replacementDelayDays:
+        item.ReplacementDelayDays !== null &&
+        item.ReplacementDelayDays !== undefined
+          ? Number(item.ReplacementDelayDays)
+          : null,
+
+      isActualReplacement: Boolean(item.ActualReplacementDate),
+
+      // =====================================================
+      // NEXT REPLACEMENT
+      // =====================================================
+
+      replacement: item.ExpectedReplacementDate,
+
+      nextReplacement: item.ExpectedReplacementDate,
+
+      replacementWeeks: 87,
+
+      age: Number(item.AgeDays || 0),
+
+      status: item.Status,
+    }));
+
+    // =========================================================
+    // AVAILABLE SESSIONS
+    // =========================================================
+
+    const availableSessions = sessionRows
+      .map((item) => item.Session)
+      .filter(Boolean);
+
+    // =========================================================
     // FINAL RESPONSE
-    // =====================================================
+    // =========================================================
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
 
-      replacementWeeks: 80,
+      selectedSession: sessionValue || "ALL",
 
-      calculationRule: "Placement Date + 80 Weeks",
+      availableSessions,
+
+      replacementWeeks: 87,
+
+      calculationRule: "Placement Date + 87 Weeks",
 
       metrics: {
         todayPlacements: Number(metrics.TodayPlacements || 0),
@@ -1936,7 +1951,7 @@ exports.getPlacementDashboard = async (req, res) => {
       placements,
 
       charts: {
-        monthlyTrend: monthlyResult.recordset.map((item) => ({
+        monthlyTrend: monthlyRows.map((item) => ({
           MonthNumber: Number(item.MonthNumber),
 
           Month: item.Month,
@@ -1946,7 +1961,7 @@ exports.getPlacementDashboard = async (req, res) => {
           Birds: Number(item.Birds || 0),
         })),
 
-        areaDistribution: areaResult.recordset.map((item) => ({
+        areaDistribution: areaRows.map((item) => ({
           Area: item.Area,
 
           Placements: Number(item.Placements || 0),
@@ -1954,7 +1969,7 @@ exports.getPlacementDashboard = async (req, res) => {
           Birds: Number(item.Birds || 0),
         })),
 
-        hatcheryPerformance: hatcheryResult.recordset.map((item) => ({
+        hatcheryPerformance: hatcheryRows.map((item) => ({
           Hatchery: item.Hatchery,
 
           Placements: Number(item.Placements || 0),
@@ -1962,7 +1977,7 @@ exports.getPlacementDashboard = async (req, res) => {
           Birds: Number(item.Birds || 0),
         })),
 
-        topFarmers: farmersResult.recordset.map((item) => ({
+        topFarmers: farmerRows.map((item) => ({
           AccCode: item.AccCode,
 
           FarmerName: item.FarmerName,
@@ -1984,7 +1999,7 @@ exports.getPlacementDashboard = async (req, res) => {
   } catch (error) {
     console.error("Placement Dashboard Error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
 
       message: "Failed to fetch placement dashboard data",
@@ -1993,7 +2008,6 @@ exports.getPlacementDashboard = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // 3. REPLACEMENT FORECAST
 //
@@ -2278,40 +2292,44 @@ exports.getReplacementForecast = async (req, res) => {
               )
       ),
 
-      FlockData AS
-      (
-          SELECT
-              AccCode,
-              FarmerName,
-              Area,
-              Hatchery,
+       FlockData AS
+(
+    SELECT
+        AccCode,
+        FarmerName,
+        Area,
+        Hatchery,
 
-              PlacementDate
-                  AS LastPlacementDate,
+        PlacementDate AS LastPlacementDate,
 
-              Birds
-                  AS BirdRequirement,
+        -- CUSTOMER KI SABSE LATEST HATCH DATE
+        MAX(PlacementDate) OVER
+        (
+            PARTITION BY AccCode
+        ) AS LatestHatchDate,
 
-              FreeBirds,
-              Mortality,
+        Birds AS BirdRequirement,
 
-              COUNT(*) OVER
-              (
-                  PARTITION BY
-                      AccCode
-              ) AS TotalPlacements,
+        FreeBirds,
 
-              CAST(
-                  DATEADD(
-                      WEEK,
-                      80,
-                      PlacementDate
-                  )
-                  AS DATE
-              ) AS ExpectedReplacementDate
+        Mortality,
 
-          FROM FlockByDate
-      )
+        COUNT(*) OVER
+        (
+            PARTITION BY AccCode
+        ) AS TotalPlacements,
+
+        CAST(
+            DATEADD(
+                WEEK,
+                87,
+                PlacementDate
+            )
+            AS DATE
+        ) AS ExpectedReplacementDate
+
+    FROM FlockByDate
+)
     `;
 
     // =====================================================
@@ -2528,13 +2546,13 @@ exports.getReplacementForecast = async (req, res) => {
 
       lastPlacement: formatDateOnly(item.LastPlacementDate),
 
-      latestHatchDate: formatDateOnly(item.LastPlacementDate),
+      latestHatchDate: formatDateOnly(item.LatestHatchDate),
 
       expectedDate: formatDateOnly(item.ExpectedReplacementDate),
 
       nextExpectedDate: formatDateOnly(item.ExpectedReplacementDate),
 
-      replacementWeeks: 80,
+      replacementWeeks: 87,
 
       requirement: Number(item.BirdRequirement || 0),
 
@@ -3015,9 +3033,9 @@ exports.getReplacementForecast = async (req, res) => {
 
       session: sessionValue || null,
 
-      replacementWeeks: 80,
+      replacementWeeks: 87,
 
-      calculationRule: "Every Flock HatchDate + 80 Weeks",
+      calculationRule: "Every Flock HatchDate + 87 Weeks",
 
       // Important:
       // parsedFromDate / parsedToDate are already
