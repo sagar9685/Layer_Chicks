@@ -1813,3 +1813,1444 @@ exports.getLayerChicksSessionDetails = async (req, res) => {
     });
   }
 };
+
+/* ==========================================================
+   BROILER PLACEMENT REPORT — OPTIMIZED
+   SQL SERVER + EXPRESS + MSSQL
+
+   Normal:
+   GET /api/report/broiler-placement-report
+       ?mode=single&minQty=10000&page=1&limit=50
+
+   Full CSV:
+   GET /api/report/broiler-placement-report
+       ?mode=single&minQty=10000&export=1
+
+   Both modes supported:
+   - single
+   - session
+
+   Filters:
+   - session
+   - customerCode
+   - customerName
+   - area
+   - fromDate
+   - toDate
+   - minQty
+========================================================== */
+
+exports.getBroilerPlacementReport = async (req, res) => {
+  try {
+    const {
+      mode = "single",
+      session = "",
+      customerCode = "",
+      customerName = "",
+      area = "",
+      fromDate = "",
+      toDate = "",
+      minQty = "10000",
+      page = "1",
+      limit = "50",
+    } = req.query;
+
+    const selectedMode = String(mode).trim().toLowerCase();
+    const isExport = req.query.export === "1";
+
+    const minimumQty = Number(minQty);
+    const pageNumber = Number(page);
+    const pageSize = Number(limit);
+
+    const clean = (value) => String(value ?? "").trim();
+
+    // ================= VALIDATIONS =================
+
+    if (!["single", "session"].includes(selectedMode)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid report mode",
+      });
+    }
+
+    if (
+      !Number.isSafeInteger(minimumQty) ||
+      minimumQty < 1 ||
+      minimumQty > 2147483647
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid minimum quantity",
+      });
+    }
+
+    if (
+      !isExport &&
+      (!Number.isSafeInteger(pageNumber) ||
+        pageNumber < 1 ||
+        !Number.isSafeInteger(pageSize) ||
+        pageSize < 1 ||
+        pageSize > 200)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid pagination",
+      });
+    }
+
+    const datesAreValid = (value) => {
+      if (!value) return true;
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return false;
+      }
+
+      const d = new Date(`${value}T00:00:00Z`);
+
+      return (
+        !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value
+      );
+    };
+
+    if (
+      !datesAreValid(fromDate) ||
+      !datesAreValid(toDate) ||
+      (fromDate && toDate && fromDate > toDate)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date range",
+      });
+    }
+
+    for (const [name, value, maxLength] of [
+      ["session", session, 30],
+      ["customerCode", customerCode, 100],
+      ["customerName", customerName, 300],
+      ["area", area, 150],
+    ]) {
+      if (
+        Array.isArray(value) ||
+        typeof value === "object" ||
+        clean(value).length > maxLength
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid ${name}`,
+        });
+      }
+    }
+
+    // Limit export size to avoid memory exhaustion.
+    const MAX_EXPORT_ROWS = 50000;
+
+    const pool = await poolPromise;
+    const request = pool.request();
+
+    // ================= SQL PARAMETERS =================
+
+    request.input("session", sql.VarChar(30), clean(session) || null);
+
+    request.input(
+      "customerCode",
+      sql.VarChar(100),
+      clean(customerCode) || null,
+    );
+
+    request.input(
+      "customerName",
+      sql.NVarChar(300),
+      clean(customerName) || null,
+    );
+
+    request.input("area", sql.NVarChar(150), clean(area) || null);
+
+    request.input("fromDate", sql.Date, fromDate || null);
+
+    request.input("toDate", sql.Date, toDate || null);
+
+    request.input("minQty", sql.Int, minimumQty);
+
+    if (!isExport) {
+      const offset = (pageNumber - 1) * pageSize;
+
+      if (!Number.isSafeInteger(offset) || offset > 2147483647) {
+        return res.status(400).json({
+          success: false,
+          message: "Pagination offset too large",
+        });
+      }
+
+      request.input("offset", sql.Int, offset);
+      request.input("limit", sql.Int, pageSize);
+    } else {
+      request.input("maxExportRows", sql.Int, MAX_EXPORT_ROWS);
+    }
+
+    // ===================================================
+    // OPTIMIZED COMMON QUERY
+    // Voucher grouping calculated once.
+    // Session totals calculated using window functions.
+    // No extra #BroilerReport intermediate table.
+    // ===================================================
+
+    const commonQuery = `
+      SET NOCOUNT ON;
+
+      ;WITH BaseSales AS (
+        SELECT
+          LTRIM(RTRIM(p.AccCode)) AS CustomerCode,
+          LTRIM(RTRIM(p.AccName)) AS CustomerName,
+          LTRIM(RTRIM(ISNULL(p.Station, ''))) AS Area,
+          LTRIM(RTRIM(p.Session)) AS Session,
+
+          CAST(p.HatchDate AS DATE) AS PlacementDate,
+          LTRIM(RTRIM(ISNULL(p.PrdUnit, ''))) AS Hatchery,
+          LTRIM(RTRIM(p.Vou_type)) AS VoucherType,
+
+          LTRIM(RTRIM(
+            CONVERT(VARCHAR(100), p.Vou_no)
+          )) AS VoucherNo,
+
+          CAST(p.BillDate AS DATE) AS BillDate,
+
+          ISNULL(p.Qty, 0) AS Qty,
+          ISNULL(p.FreeQty, 0) AS FreeQty,
+          ISNULL(p.Mortality, 0) AS Mortality,
+          ISNULL(p.Amount, 0) AS Amount
+
+        FROM PrintData p
+
+        WHERE
+          p.Cmp_id = 'PHHA'
+
+          AND UPPER(LTRIM(RTRIM(
+            ISNULL(p.ProductName, '')
+          ))) = 'BROILER CHICKS'
+
+          AND UPPER(LTRIM(RTRIM(
+            ISNULL(p.Vou_type, '')
+          ))) LIKE 'SALE%'
+
+          AND p.AccCode IS NOT NULL
+          AND LTRIM(RTRIM(p.AccCode)) <> ''
+
+          AND p.Session IS NOT NULL
+          AND LTRIM(RTRIM(p.Session)) <> ''
+
+          AND p.HatchDate IS NOT NULL
+
+          AND (
+            @session IS NULL
+            OR LTRIM(RTRIM(p.Session)) = @session
+          )
+
+          AND (
+            @customerCode IS NULL
+            OR LTRIM(RTRIM(p.AccCode)) = @customerCode
+          )
+      ),
+
+      VoucherPurchases AS (
+        SELECT
+          CustomerCode,
+          MAX(CustomerName) AS CustomerName,
+          MAX(Area) AS Area,
+          Session,
+          PlacementDate,
+          MAX(Hatchery) AS Hatchery,
+          VoucherType,
+          VoucherNo,
+          MAX(BillDate) AS BillDate,
+
+          SUM(Qty) AS Qty,
+          SUM(FreeQty) AS FreeQty,
+          SUM(Mortality) AS Mortality,
+          SUM(Amount) AS Amount
+
+        FROM BaseSales
+
+        GROUP BY
+          CustomerCode,
+          Session,
+          PlacementDate,
+          VoucherType,
+          VoucherNo
+      ),
+
+      PurchasesWithSessionTotals AS (
+        SELECT
+          v.*,
+
+          SUM(v.Qty) OVER (
+            PARTITION BY v.CustomerCode, v.Session
+          ) AS SessionTotalQty,
+
+          SUM(v.FreeQty) OVER (
+            PARTITION BY v.CustomerCode, v.Session
+          ) AS SessionFreeQty,
+
+          SUM(v.Amount) OVER (
+            PARTITION BY v.CustomerCode, v.Session
+          ) AS SessionTotalAmount,
+
+          COUNT(*) OVER (
+            PARTITION BY v.CustomerCode, v.Session
+          ) AS TotalPurchases,
+
+          MIN(v.PlacementDate) OVER (
+            PARTITION BY v.CustomerCode, v.Session
+          ) AS FirstPlacementDate,
+
+          MAX(v.PlacementDate) OVER (
+            PARTITION BY v.CustomerCode, v.Session
+          ) AS LastPlacementDate
+
+        FROM VoucherPurchases v
+      ),
+
+      FilteredPurchases AS (
+        SELECT *
+        FROM PurchasesWithSessionTotals v
+
+        WHERE
+          (
+            @customerName IS NULL
+            OR v.CustomerName LIKE
+              '%' + @customerName + '%'
+          )
+
+          AND (
+            @area IS NULL
+            OR v.Area = @area
+          )
+
+          AND (
+            @fromDate IS NULL
+            OR v.PlacementDate >= @fromDate
+          )
+
+          AND (
+            @toDate IS NULL
+            OR v.PlacementDate <= @toDate
+          )
+      ),
+
+      FinalReport AS (
+        ${
+          selectedMode === "single"
+            ? `
+              SELECT
+                CustomerCode,
+                CustomerName,
+                Area,
+                Session,
+                PlacementDate,
+                Hatchery,
+                VoucherType,
+                VoucherNo,
+                BillDate,
+
+                Qty AS PlacementQty,
+                FreeQty,
+                Mortality,
+                Amount,
+
+                CAST(
+                  CASE
+                    WHEN Qty > 0
+                      THEN Amount * 1.0 / Qty
+                    ELSE 0
+                  END AS DECIMAL(18, 2)
+                ) AS AverageRate,
+
+                SessionTotalQty,
+                SessionTotalAmount,
+                TotalPurchases,
+                FirstPlacementDate,
+                LastPlacementDate
+
+              FROM FilteredPurchases
+              WHERE Qty >= @minQty
+            `
+            : `
+              SELECT
+                CustomerCode,
+                MAX(CustomerName) AS CustomerName,
+                MAX(Area) AS Area,
+                Session,
+
+                MAX(SessionTotalQty) AS TotalQty,
+                MAX(SessionFreeQty) AS TotalFreeQty,
+                MAX(SessionTotalAmount) AS TotalAmount,
+                MAX(TotalPurchases) AS TotalPurchases,
+
+                MIN(FirstPlacementDate)
+                  AS FirstPlacementDate,
+
+                MAX(LastPlacementDate)
+                  AS LastPlacementDate,
+
+                SUM(Qty) AS FilteredPeriodQty,
+                COUNT(*) AS FilteredPeriodPurchases
+
+              FROM FilteredPurchases
+
+              WHERE SessionTotalQty >= @minQty
+
+              GROUP BY CustomerCode, Session
+            `
+        }
+      )
+
+      SELECT *
+      INTO #FinalReport
+      FROM FinalReport;
+    `;
+
+    const orderBy =
+      selectedMode === "single"
+        ? `PlacementDate DESC,
+           PlacementQty DESC,
+           CustomerName ASC,
+           CustomerCode ASC,
+           Session ASC,
+           VoucherType ASC,
+           VoucherNo ASC`
+        : `TotalQty DESC,
+           CustomerName ASC,
+           CustomerCode ASC,
+           Session ASC`;
+
+    // ===================================================
+    // NORMAL JSON OR FULL CSV QUERY
+    // ===================================================
+
+    const finalQuery = isExport
+      ? `
+        ${commonQuery}
+
+        IF (
+          SELECT COUNT_BIG(*)
+          FROM #FinalReport
+        ) > @maxExportRows
+        BEGIN
+          THROW 51001,
+            'Export exceeds the maximum allowed rows',
+            1;
+        END;
+
+        SELECT *
+        FROM #FinalReport
+        ORDER BY ${orderBy};
+
+        DROP TABLE #FinalReport;
+      `
+      : `
+        ${commonQuery}
+
+        SELECT *
+        FROM #FinalReport
+        ORDER BY ${orderBy}
+        OFFSET @offset ROWS
+        FETCH NEXT @limit ROWS ONLY;
+
+        SELECT
+          COUNT(*) AS TotalRecords,
+
+          COUNT(DISTINCT CustomerCode)
+            AS TotalCustomers,
+
+          ISNULL(
+            SUM(
+              ${selectedMode === "single" ? "PlacementQty" : "TotalQty"}
+            ),
+            0
+          ) AS TotalQty,
+
+          ISNULL(
+            SUM(
+              ${selectedMode === "single" ? "Amount" : "TotalAmount"}
+            ),
+            0
+          ) AS TotalAmount
+
+        FROM #FinalReport;
+
+        DROP TABLE #FinalReport;
+      `;
+
+    const startedAt = Date.now();
+
+    const result = await request.query(finalQuery);
+
+    const elapsed = Date.now() - startedAt;
+
+    console.log(
+      `[Broiler Report] mode=${selectedMode}, ` +
+        `export=${isExport}, SQL=${elapsed}ms`,
+    );
+
+    const data = result.recordsets?.[0] || [];
+
+    // ===================================================
+    // EXPORT — DIRECT CSV
+    // ===================================================
+
+    if (isExport) {
+      const columns =
+        selectedMode === "single"
+          ? [
+              ["Session", "Session"],
+              ["Customer Code", "CustomerCode"],
+              ["Customer Name", "CustomerName"],
+              ["Area", "Area"],
+              ["Placement Date", "PlacementDate"],
+              ["Hatchery", "Hatchery"],
+              ["Voucher Type", "VoucherType"],
+              ["Voucher No", "VoucherNo"],
+              ["Bill Date", "BillDate"],
+              ["Placement Qty", "PlacementQty"],
+              ["Free Qty", "FreeQty"],
+              ["Mortality", "Mortality"],
+              ["Average Rate", "AverageRate"],
+              ["Amount", "Amount"],
+              ["Full Session Qty", "SessionTotalQty"],
+            ]
+          : [
+              ["Session", "Session"],
+              ["Customer Code", "CustomerCode"],
+              ["Customer Name", "CustomerName"],
+              ["Area", "Area"],
+              ["Total Qty", "TotalQty"],
+              ["Total Free Qty", "TotalFreeQty"],
+              ["Total Purchases", "TotalPurchases"],
+              ["Total Amount", "TotalAmount"],
+              ["First Placement", "FirstPlacementDate"],
+              ["Last Placement", "LastPlacementDate"],
+              ["Filtered Period Qty", "FilteredPeriodQty"],
+              ["Filtered Period Purchases", "FilteredPeriodPurchases"],
+            ];
+
+      const dateColumns = new Set([
+        "PlacementDate",
+        "BillDate",
+        "FirstPlacementDate",
+        "LastPlacementDate",
+      ]);
+
+      const safeCell = (value) => {
+        let text = String(value ?? "");
+
+        // Prevent spreadsheet formula execution.
+        if (/^[\s]*[=+\-@\t\r]/.test(text)) {
+          text = "'" + text;
+        }
+
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+
+      const csvDate = (value) => {
+        if (!value) return "";
+
+        if (value instanceof Date) {
+          return value.toISOString().slice(0, 10);
+        }
+
+        return String(value).slice(0, 10);
+      };
+
+      const rows = [
+        columns.map(([heading]) => safeCell(heading)).join(","),
+
+        ...data.map((row) =>
+          columns
+            .map(([, field]) =>
+              safeCell(
+                dateColumns.has(field) ? csvDate(row[field]) : row[field],
+              ),
+            )
+            .join(","),
+        ),
+      ];
+
+      const csv = "\uFEFF" + rows.join("\r\n");
+
+      const filename =
+        `Broiler_${selectedMode}_Report_` +
+        `${new Date().toISOString().slice(0, 10)}.csv`;
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+
+      res.setHeader("Cache-Control", "no-store");
+
+      return res.status(200).send(csv);
+    }
+
+    // ===================================================
+    // NORMAL PAGINATED JSON RESPONSE
+    // ===================================================
+
+    const totals = result.recordsets?.[1]?.[0] || {};
+
+    const totalRecords = Number(totals.TotalRecords || 0);
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Broiler placement report fetched successfully",
+
+      mode: selectedMode,
+
+      filters: {
+        session: clean(session) || null,
+        customerCode: clean(customerCode) || null,
+        customerName: clean(customerName) || null,
+        area: clean(area) || null,
+        fromDate: fromDate || null,
+        toDate: toDate || null,
+        minQty: minimumQty,
+      },
+
+      summary: {
+        totalRecords,
+        totalCustomers: Number(totals.TotalCustomers || 0),
+        totalQty: Number(totals.TotalQty || 0),
+        totalAmount: Number(totals.TotalAmount || 0),
+      },
+
+      pagination: {
+        page: pageNumber,
+        limit: pageSize,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / pageSize),
+      },
+
+      data,
+    });
+  } catch (error) {
+    console.error("BROILER REPORT ERROR:", error);
+
+    const exportTooLarge = error.number === 51001;
+
+    return res.status(exportTooLarge ? 413 : 500).json({
+      success: false,
+      message: exportTooLarge
+        ? "Export exceeds 50,000 records"
+        : "Error fetching Broiler Placement Report",
+    });
+  }
+};
+
+// ============================================
+// BROILER CUSTOMER AUTOCOMPLETE API
+// GET /api/report/broiler-customers
+// ============================================
+
+// ===================================================
+// BROILER CUSTOMER API
+//
+// Without search = All Broiler Customers
+// With search    = Matching Broiler Customers
+// Session        = Optional
+// ===================================================
+
+exports.searchBroilerCustomers = async (req, res) => {
+  try {
+    const search = String(req.query.search || "").trim();
+    const session = String(req.query.session || "").trim();
+
+    if (search.length > 100 || session.length > 30) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid search parameters",
+      });
+    }
+
+    const pool = await poolPromise;
+
+    const request = pool.request();
+
+    request.input("search", sql.NVarChar(100), search || null);
+    request.input("session", sql.VarChar(30), session || null);
+
+    const result = await request.query(`
+      ;WITH CustomerList AS (
+        SELECT
+          LTRIM(RTRIM(AccCode)) AS CustomerCode,
+
+          MAX(
+            LTRIM(RTRIM(AccName))
+          ) AS CustomerName,
+
+          MAX(
+            LTRIM(RTRIM(ISNULL(Station, '')))
+          ) AS Area
+
+        FROM PrintData
+
+        WHERE
+          Cmp_id = 'PHHA'
+
+          AND UPPER(LTRIM(RTRIM(ProductName)))
+            = 'BROILER CHICKS'
+
+          AND UPPER(LTRIM(RTRIM(Vou_type)))
+            LIKE 'SALE%'
+
+          AND AccCode IS NOT NULL
+          AND LTRIM(RTRIM(AccCode)) <> ''
+
+          AND AccName IS NOT NULL
+          AND LTRIM(RTRIM(AccName)) <> ''
+
+          AND (
+            @session IS NULL
+            OR LTRIM(RTRIM(Session)) = @session
+          )
+
+        GROUP BY LTRIM(RTRIM(AccCode))
+      )
+
+      SELECT
+        CustomerCode,
+        CustomerName,
+        Area
+
+      FROM CustomerList
+
+      WHERE
+        @search IS NULL
+
+        OR CHARINDEX(
+          @search,
+          CustomerName
+        ) > 0
+
+        OR CHARINDEX(
+          @search,
+          CustomerCode
+        ) > 0
+
+      ORDER BY CustomerName ASC;
+    `);
+
+    return res.status(200).json({
+      success: true,
+
+      totalCustomers: result.recordset.length,
+
+      filters: {
+        search: search || null,
+        session: session || null,
+      },
+
+      customers: result.recordset,
+    });
+  } catch (error) {
+    console.error("Broiler Customer Search Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch broiler customers",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================
+// BROILER AVAILABLE SESSIONS API
+// GET /api/report/broiler-sessions
+// ============================================
+
+exports.getBroilerSessions = async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request().query(`
+      SELECT DISTINCT
+        LTRIM(RTRIM(Session)) AS Session
+      FROM PrintData
+      WHERE
+        Cmp_id = 'PHHA'
+        AND ProductName = 'BROILER CHICKS'
+        AND Vou_type LIKE 'SALE%'
+        AND Session IS NOT NULL
+        AND LTRIM(RTRIM(Session)) <> ''
+      ORDER BY Session DESC
+    `);
+
+    return res.status(200).json({
+      success: true,
+      sessions: result.recordset.map((item) => item.Session),
+    });
+  } catch (error) {
+    console.error("Broiler Sessions Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch sessions",
+    });
+  }
+};
+
+/* =====================================================
+   BROILER AREAS API
+   GET /api/report/broiler-areas
+   GET /api/report/broiler-areas?session=2627
+===================================================== */
+
+exports.getBroilerAreas = async (req, res) => {
+  try {
+    const session = String(req.query.session || "").trim();
+
+    if (session.length > 30) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid session",
+      });
+    }
+
+    const pool = await poolPromise;
+
+    const result = await pool
+      .request()
+      .input("session", sql.VarChar(30), session || null).query(`
+        SELECT DISTINCT
+          LTRIM(RTRIM(Station)) AS Area
+        FROM PrintData
+        WHERE
+          Cmp_id = 'PHHA'
+          AND UPPER(LTRIM(RTRIM(ProductName)))
+              = 'BROILER CHICKS'
+          AND UPPER(LTRIM(RTRIM(Vou_type)))
+              LIKE 'SALE%'
+          AND Station IS NOT NULL
+          AND LTRIM(RTRIM(Station)) <> ''
+          AND (
+            @session IS NULL
+            OR LTRIM(RTRIM(Session)) = @session
+          )
+        ORDER BY Area ASC
+      `);
+
+    return res.status(200).json({
+      success: true,
+      areas: result.recordset.map((row) => row.Area),
+    });
+  } catch (error) {
+    console.error("Broiler Areas Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch broiler areas",
+    });
+  }
+};
+
+/* ============================================================
+   BROILER CUSTOMER WISE REPORT APIs
+
+   1. /broiler-customer-summary
+      One row per customer
+
+   2. /broiler-customer-details
+      Customer's full qualifying placement history
+
+   DATABASE: SQL Server
+   SOURCE: PrintData
+   COMPANY: PHHA
+============================================================ */
+
+// ------------------------------------------------------------
+// COMMON FILTER VALIDATION
+// ------------------------------------------------------------
+
+const parseBroilerCustomerFilters = (req) => {
+  const q = req.query;
+
+  const getString = (key, maxLength) => {
+    const value = q[key];
+
+    if (
+      Array.isArray(value) ||
+      (value !== undefined && typeof value === "object")
+    ) {
+      throw new Error(`Invalid ${key}`);
+    }
+
+    const cleaned = String(value ?? "").trim();
+
+    if (cleaned.length > maxLength) {
+      throw new Error(`Invalid ${key}`);
+    }
+
+    return cleaned;
+  };
+
+  const mode = getString("mode", 10) || "single";
+  const minQtyRaw = getString("minQty", 12);
+  const pageRaw = getString("page", 12);
+  const limitRaw = getString("limit", 12);
+
+  const minQty = Number(minQtyRaw || 10000);
+  const page = Number(pageRaw || 1);
+  const limit = Number(limitRaw || 50);
+
+  if (!["single", "session"].includes(mode)) {
+    throw new Error("Invalid mode");
+  }
+
+  if (!Number.isSafeInteger(minQty) || minQty < 1 || minQty > 2147483647) {
+    throw new Error("Invalid minQty");
+  }
+
+  if (
+    !Number.isSafeInteger(page) ||
+    page < 1 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 200
+  ) {
+    throw new Error("Invalid pagination");
+  }
+
+  const offset = (page - 1) * limit;
+
+  if (!Number.isSafeInteger(offset) || offset > 2147483647) {
+    throw new Error("Invalid pagination");
+  }
+
+  const filters = {
+    mode,
+    minQty,
+    page,
+    limit,
+    offset,
+
+    session: getString("session", 30),
+    customerCode: getString("customerCode", 100),
+    customerName: getString("customerName", 300),
+    area: getString("area", 150),
+
+    fromDate: getString("fromDate", 10),
+    toDate: getString("toDate", 10),
+  };
+
+  const isValidDate = (value) => {
+    if (!value) return true;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return false;
+    }
+
+    const date = new Date(`${value}T00:00:00Z`);
+
+    return (
+      !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+    );
+  };
+
+  if (
+    !isValidDate(filters.fromDate) ||
+    !isValidDate(filters.toDate) ||
+    (filters.fromDate && filters.toDate && filters.fromDate > filters.toDate)
+  ) {
+    throw new Error("Invalid placement date range");
+  }
+
+  return filters;
+};
+
+// ------------------------------------------------------------
+// BIND SAFE SQL PARAMETERS
+// ------------------------------------------------------------
+
+const bindBroilerCustomerFilters = (request, f) => {
+  request.input("mode", sql.VarChar(10), f.mode);
+
+  request.input("session", sql.VarChar(30), f.session || null);
+
+  request.input("customerCode", sql.VarChar(100), f.customerCode || null);
+
+  request.input("customerName", sql.NVarChar(300), f.customerName || null);
+
+  request.input("area", sql.NVarChar(150), f.area || null);
+
+  request.input("fromDate", sql.Date, f.fromDate || null);
+
+  request.input("toDate", sql.Date, f.toDate || null);
+
+  request.input("minQty", sql.Int, f.minQty);
+
+  request.input("offset", sql.Int, f.offset);
+  request.input("limit", sql.Int, f.limit);
+
+  return request;
+};
+
+// ------------------------------------------------------------
+// SHARED SQL REPORT
+//
+// Preserve voucher-level aggregation.
+// Calculate session totals before filtering placement dates.
+//
+// Single mode:
+//   Only individual purchases >= minQty.
+//
+// Session mode:
+//   All purchases belonging to qualifying sessions.
+//
+// Customer grouping happens AFTER qualification.
+// ------------------------------------------------------------
+
+const BROILER_CUSTOMER_BASE_SQL = `
+  SET NOCOUNT ON;
+
+  ;WITH BaseSales AS (
+    SELECT
+      LTRIM(RTRIM(p.AccCode)) AS CustomerCode,
+
+      LTRIM(RTRIM(p.AccName)) AS CustomerName,
+
+      LTRIM(RTRIM(
+        ISNULL(p.Station, '')
+      )) AS Area,
+
+      LTRIM(RTRIM(p.Session)) AS Session,
+
+      CAST(p.HatchDate AS DATE)
+        AS PlacementDate,
+
+      CAST(p.BillDate AS DATE)
+        AS BillDate,
+
+      LTRIM(RTRIM(
+        ISNULL(p.PrdUnit, '')
+      )) AS Hatchery,
+
+      LTRIM(RTRIM(p.Vou_type))
+        AS VoucherType,
+
+      LTRIM(RTRIM(
+        CONVERT(VARCHAR(100), p.Vou_no)
+      )) AS VoucherNo,
+
+      ISNULL(p.Qty, 0) AS Qty,
+
+      ISNULL(p.FreeQty, 0) AS FreeQty,
+
+      ISNULL(p.Mortality, 0) AS Mortality,
+
+      ISNULL(p.Amount, 0) AS Amount
+
+    FROM PrintData p
+
+    WHERE
+      p.Cmp_id = 'PHHA'
+
+      AND UPPER(LTRIM(RTRIM(
+        ISNULL(p.ProductName, '')
+      ))) = 'BROILER CHICKS'
+
+      AND UPPER(LTRIM(RTRIM(
+        ISNULL(p.Vou_type, '')
+      ))) LIKE 'SALE%'
+
+      AND p.AccCode IS NOT NULL
+      AND LTRIM(RTRIM(p.AccCode)) <> ''
+
+      AND p.Session IS NOT NULL
+      AND LTRIM(RTRIM(p.Session)) <> ''
+
+      AND p.HatchDate IS NOT NULL
+
+      AND (
+        @session IS NULL
+        OR LTRIM(RTRIM(p.Session)) = @session
+      )
+
+      AND (
+        @customerCode IS NULL
+        OR LTRIM(RTRIM(p.AccCode)) = @customerCode
+      )
+  ),
+
+  -- GROUP MULTIPLE PRODUCT ROWS INTO ONE VOUCHER
+
+  VoucherPurchases AS (
+    SELECT
+      CustomerCode,
+
+      MAX(CustomerName) AS CustomerName,
+      MAX(Area) AS Area,
+
+      Session,
+      PlacementDate,
+
+      MAX(BillDate) AS BillDate,
+      MAX(Hatchery) AS Hatchery,
+
+      VoucherType,
+      VoucherNo,
+
+      SUM(Qty) AS Qty,
+      SUM(FreeQty) AS FreeQty,
+      SUM(Mortality) AS Mortality,
+      SUM(Amount) AS Amount
+
+    FROM BaseSales
+
+    GROUP BY
+      CustomerCode,
+      Session,
+      PlacementDate,
+      VoucherType,
+      VoucherNo
+  ),
+
+  -- SESSION TOTALS MUST USE THE COMPLETE SESSION
+
+  SessionCalculated AS (
+    SELECT
+      v.*,
+
+      SUM(v.Qty) OVER (
+        PARTITION BY v.CustomerCode, v.Session
+      ) AS SessionTotalQty,
+
+      SUM(v.Amount) OVER (
+        PARTITION BY v.CustomerCode, v.Session
+      ) AS SessionTotalAmount,
+
+      COUNT(*) OVER (
+        PARTITION BY v.CustomerCode, v.Session
+      ) AS SessionTotalPurchases
+
+    FROM VoucherPurchases v
+  ),
+
+  EligiblePurchases AS (
+    SELECT
+      v.*
+
+    FROM SessionCalculated v
+
+    WHERE
+      (
+        (
+          @mode = 'single'
+          AND v.Qty >= @minQty
+        )
+
+        OR
+
+        (
+          @mode = 'session'
+          AND v.SessionTotalQty >= @minQty
+        )
+      )
+
+      AND (
+        @customerName IS NULL
+        OR v.CustomerName LIKE
+          '%' + @customerName + '%'
+      )
+
+      AND (
+        @area IS NULL
+        OR v.Area = @area
+      )
+
+      AND (
+        @fromDate IS NULL
+        OR v.PlacementDate >= @fromDate
+      )
+
+      AND (
+        @toDate IS NULL
+        OR v.PlacementDate <= @toDate
+      )
+  )
+
+  SELECT
+    CustomerCode,
+    CustomerName,
+    Area,
+    Session,
+
+    PlacementDate,
+    BillDate,
+
+    Hatchery,
+    VoucherType,
+    VoucherNo,
+
+    Qty AS PlacementQty,
+
+    FreeQty,
+    Mortality,
+    Amount,
+
+    CAST(
+      CASE
+        WHEN Qty > 0
+          THEN Amount * 1.0 / Qty
+        ELSE 0
+      END
+      AS DECIMAL(18, 2)
+    ) AS AverageRate,
+
+    SessionTotalQty,
+    SessionTotalAmount,
+    SessionTotalPurchases
+
+  INTO #EligibleBroilerPurchases
+
+  FROM EligiblePurchases
+  OPTION (RECOMPILE);
+`;
+
+// ============================================================
+// API 1: CUSTOMER-WISE SUMMARY
+// ============================================================
+
+exports.getBroilerCustomerSummary = async (req, res) => {
+  try {
+    const filters = parseBroilerCustomerFilters(req);
+
+    const pool = await poolPromise;
+
+    const request = bindBroilerCustomerFilters(pool.request(), filters);
+
+    const startedAt = Date.now();
+
+    const result = await request.query(`
+      ${BROILER_CUSTOMER_BASE_SQL}
+
+      SELECT
+        CustomerCode,
+
+        MAX(CustomerName) AS CustomerName,
+        MAX(Area) AS Area,
+
+        COUNT(*) AS TotalPurchases,
+
+        COUNT(DISTINCT Session) AS SessionCount,
+
+        ISNULL(SUM(PlacementQty), 0)
+          AS TotalQty,
+
+        ISNULL(SUM(FreeQty), 0)
+          AS TotalFreeQty,
+
+        ISNULL(SUM(Mortality), 0)
+          AS TotalMortality,
+
+        ISNULL(SUM(Amount), 0)
+          AS TotalAmount,
+
+        MIN(PlacementDate)
+          AS FirstPlacementDate,
+
+        MAX(PlacementDate)
+          AS LastPlacementDate
+
+      INTO #CustomerSummary
+
+      FROM #EligibleBroilerPurchases
+
+      GROUP BY CustomerCode;
+
+      -- RESULT 1: CURRENT PAGE
+
+      SELECT *
+      FROM #CustomerSummary
+
+      ORDER BY
+        TotalQty DESC,
+        CustomerCode ASC
+
+      OFFSET @offset ROWS
+      FETCH NEXT @limit ROWS ONLY;
+
+      -- RESULT 2: ENTIRE FILTERED REPORT TOTALS
+
+      SELECT
+        COUNT(*) AS TotalRecords,
+
+        COUNT(*) AS TotalCustomers,
+
+        ISNULL(SUM(TotalQty), 0)
+          AS TotalQty,
+
+        ISNULL(SUM(TotalAmount), 0)
+          AS TotalAmount
+
+      FROM #CustomerSummary;
+
+      DROP TABLE #CustomerSummary;
+      DROP TABLE #EligibleBroilerPurchases;
+    `);
+
+    const data = result.recordsets?.[0] || [];
+
+    const totals = result.recordsets?.[1]?.[0] || {};
+
+    const totalRecords = Number(totals.TotalRecords || 0);
+
+    console.log("[Broiler Customer Summary]", Date.now() - startedAt, "ms");
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Customer-wise broiler report fetched successfully",
+
+      mode: filters.mode,
+
+      data,
+
+      summary: {
+        totalRecords,
+
+        totalCustomers: Number(totals.TotalCustomers || 0),
+
+        totalQty: Number(totals.TotalQty || 0),
+
+        totalAmount: Number(totals.TotalAmount || 0),
+      },
+
+      pagination: {
+        page: filters.page,
+        limit: filters.limit,
+
+        totalRecords,
+
+        totalPages: Math.ceil(totalRecords / filters.limit),
+      },
+    });
+  } catch (error) {
+    console.error("BROILER CUSTOMER SUMMARY ERROR:", error);
+
+    const isValidationError = String(error.message).startsWith("Invalid ");
+
+    return res.status(isValidationError ? 400 : 500).json({
+      success: false,
+
+      message: isValidationError
+        ? error.message
+        : "Unable to fetch customer summary",
+    });
+  }
+};
+
+// ============================================================
+// API 2: CUSTOMER PURCHASE HISTORY / MODAL
+// ============================================================
+
+exports.getBroilerCustomerDetails = async (req, res) => {
+  try {
+    const filters = parseBroilerCustomerFilters(req);
+
+    if (!filters.customerCode) {
+      return res.status(400).json({
+        success: false,
+        message: "customerCode is required",
+      });
+    }
+
+    const pool = await poolPromise;
+
+    const request = bindBroilerCustomerFilters(pool.request(), filters);
+
+    const startedAt = Date.now();
+
+    const result = await request.query(`
+      ${BROILER_CUSTOMER_BASE_SQL}
+
+      -- FETCH UP TO 10001 TO DETECT OVERSIZED HISTORY
+
+      SELECT TOP (10001)
+        CustomerCode,
+        CustomerName,
+        Area,
+        Session,
+
+        PlacementDate,
+        BillDate,
+
+        Hatchery,
+        VoucherType,
+        VoucherNo,
+
+        PlacementQty,
+        FreeQty,
+        Mortality,
+        Amount,
+        AverageRate,
+
+        SessionTotalQty,
+        SessionTotalAmount,
+        SessionTotalPurchases
+
+      FROM #EligibleBroilerPurchases
+
+      ORDER BY
+        PlacementDate DESC,
+        Session DESC,
+        VoucherType ASC,
+        VoucherNo ASC;
+
+      DROP TABLE #EligibleBroilerPurchases;
+    `);
+
+    const data = result.recordsets?.[0] || [];
+
+    if (data.length > 10000) {
+      return res.status(413).json({
+        success: false,
+
+        message:
+          "Customer history exceeds 10,000 purchases. Apply narrower filters.",
+      });
+    }
+
+    console.log(
+      "[Broiler Customer Details]",
+      filters.customerCode,
+      Date.now() - startedAt,
+      "ms",
+    );
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Customer placement history fetched successfully",
+
+      customerCode: filters.customerCode,
+
+      mode: filters.mode,
+
+      totalPurchases: data.length,
+
+      data,
+    });
+  } catch (error) {
+    console.error("BROILER CUSTOMER DETAILS ERROR:", error);
+
+    const isValidationError = String(error.message).startsWith("Invalid ");
+
+    return res.status(isValidationError ? 400 : 500).json({
+      success: false,
+
+      message: isValidationError
+        ? error.message
+        : "Unable to fetch customer placement history",
+    });
+  }
+};

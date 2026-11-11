@@ -13,6 +13,7 @@ import Login from "../pages/Login";
 
 import ProtectedRoute from "../component/ProtectedRoute";
 import LayerChicksSessionReport from "../component/LayerChicksSessionReport";
+import BroilerPlacementReport from "../component/BroilerPlacementReport";
 
 function App() {
   return (
@@ -29,6 +30,10 @@ function App() {
           <Route path="/replacement" element={<ReplacementForecast />} />
           <Route path="/report" element={<ReportsCenter />} />
           <Route path="/layer" element={<LayerChicksSessionReport />} />
+          <Route
+            path="/broiler-placement-report"
+            element={<BroilerPlacementReport />}
+          />
         </Route>
         <Route path="/" element={<Login />} />
       </Routes>

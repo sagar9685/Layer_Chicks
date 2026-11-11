@@ -11,6 +11,7 @@ import {
   Sparkles,
   LogOut,
   Settings,
+  Bird,
 } from "lucide-react";
 import styles from "./AdminSidebar.module.css";
 import { useNavigate } from "react-router-dom";
@@ -48,6 +49,11 @@ const AdminSideBar = ({
       name: "Replacement Forecast",
       icon: TrendingUp,
       path: "/replacement",
+    },
+    {
+      name: "Broiler Placement Report",
+      icon: Bird,
+      path: "/broiler-placement-report",
     },
     {
       name: "Calendar",
